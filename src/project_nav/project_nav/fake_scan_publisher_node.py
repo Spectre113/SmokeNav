@@ -29,6 +29,8 @@ class FakeScanPublisherNode(Node):
             'front_blocked',
             'front_left_narrow',
             'front_right_narrow',
+            'front_left_better',
+            'front_flip_noise',
             'left_blocked',
             'right_blocked',
             'all_blocked',
@@ -54,6 +56,10 @@ class FakeScanPublisherNode(Node):
 
         self.get_logger().info(f'Published fake scan scenario: {scenario}')
 
+    def fill_sector(self, ranges: list[float], start: int, end: int, value: float) -> None:
+        for i in range(start, end):
+            ranges[i] = value
+
     def build_scan_message(self, scenario: str) -> LaserScan:
         msg = LaserScan()
 
@@ -72,7 +78,6 @@ class FakeScanPublisherNode(Node):
 
         ranges = [self.range_max] * self.num_readings
 
-        # Сектора по индексам для 181 луча (-90..+90)
         center_start = 75
         center_end = 105
 
@@ -82,50 +87,47 @@ class FakeScanPublisherNode(Node):
         left_start = 125
         left_end = 165
 
-        # Доп. узкие зоны для несимметричных сценариев
         center_left_slice_start = 75
         center_left_slice_end = 90
 
         center_right_slice_start = 90
         center_right_slice_end = 105
 
-        # Дистанции
         hard_block = 0.30
         narrow_block = 0.65
         semi_open = 1.00
 
         if scenario == 'front_blocked':
-            for i in range(center_start, center_end):
-                ranges[i] = hard_block
+            self.fill_sector(ranges, center_start, center_end, hard_block)
 
         elif scenario == 'left_blocked':
-            for i in range(left_start, left_end):
-                ranges[i] = hard_block
+            self.fill_sector(ranges, left_start, left_end, hard_block)
 
         elif scenario == 'right_blocked':
-            for i in range(right_start, right_end):
-                ranges[i] = hard_block
+            self.fill_sector(ranges, right_start, right_end, hard_block)
 
         elif scenario == 'all_blocked':
             ranges = [hard_block] * self.num_readings
 
         elif scenario == 'front_left_narrow':
-            # Спереди проход есть, но слева уже и хуже, справа лучше
-            for i in range(center_start, center_end):
-                ranges[i] = semi_open
-            for i in range(left_start, left_end):
-                ranges[i] = narrow_block
-            for i in range(center_left_slice_start, center_left_slice_end):
-                ranges[i] = narrow_block
+            self.fill_sector(ranges, center_start, center_end, semi_open)
+            self.fill_sector(ranges, left_start, left_end, narrow_block)
+            self.fill_sector(ranges, center_left_slice_start, center_left_slice_end, narrow_block)
 
         elif scenario == 'front_right_narrow':
-            # Спереди проход есть, но справа уже и хуже, слева лучше
-            for i in range(center_start, center_end):
-                ranges[i] = semi_open
-            for i in range(right_start, right_end):
-                ranges[i] = narrow_block
-            for i in range(center_right_slice_start, center_right_slice_end):
-                ranges[i] = narrow_block
+            self.fill_sector(ranges, center_start, center_end, semi_open)
+            self.fill_sector(ranges, right_start, right_end, narrow_block)
+            self.fill_sector(ranges, center_right_slice_start, center_right_slice_end, narrow_block)
+
+        elif scenario == 'front_left_better':
+            self.fill_sector(ranges, center_start, center_end, hard_block)
+            self.fill_sector(ranges, right_start, right_end, semi_open)
+            self.fill_sector(ranges, left_start, left_end, self.range_max)
+
+        elif scenario == 'front_flip_noise':
+            self.fill_sector(ranges, center_start, center_end, 0.40)
+            self.fill_sector(ranges, left_start, left_end, 2.50)
+            self.fill_sector(ranges, right_start, right_end, 2.60)
 
         elif scenario == 'all_free':
             pass
