@@ -25,7 +25,6 @@ setup(
             ],
         ),
         ("share/" + package_name + "/worlds", glob("worlds/*.world")),
-        ("share/" + package_name + "/worlds/custom-flat", glob("worlds/custom-flat/*")),
         ("share/" + package_name + "/urdf", glob("urdf/*.xacro")),
     ],
     install_requires=["setuptools"],

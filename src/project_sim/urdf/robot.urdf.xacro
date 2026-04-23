@@ -12,6 +12,9 @@
     <xacro:property name="base_lift" value="0.01"/>
     <xacro:property name="camera_link_size" value="0.05"/>
     <xacro:property name="imu_link_size" value="0.02"/>
+    <xacro:property name="thermal_link_size" value="0.05"/>
+    <xacro:property name="radar_link_size" value="0.05"/>
+    <xacro:property name="ultrasonic_link_size" value="0.03"/>
 
     <!-- Base Link -->
     <link name="base_link">
@@ -95,6 +98,94 @@
         <parent link="camera_link"/>
         <child link="camera_depth_optical_frame"/>
         <origin xyz="0 0 0" rpy="${-M_PI/2} 0 ${-M_PI/2}"/>
+    </joint>
+
+    <!-- Thermal camera link (simulated as monochrome camera) -->
+    <link name="thermal_link">
+        <visual>
+            <geometry>
+                <box size="${thermal_link_size} ${thermal_link_size} ${thermal_link_size}"/>
+            </geometry>
+            <material name="orange">
+                <color rgba="0.9 0.4 0.0 1.0"/>
+            </material>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="${thermal_link_size} ${thermal_link_size} ${thermal_link_size}"/>
+            </geometry>
+        </collision>
+        <inertial>
+            <mass value="0.1"/>
+            <inertia ixx="1e-6" ixy="0.0" ixz="0.0" iyy="1e-6" iyz="0.0" izz="1e-6"/>
+        </inertial>
+    </link>
+
+    <joint name="thermal_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="thermal_link"/>
+        <origin xyz="${base_length/2 - thermal_link_size/2} 0 ${base_height/2 + thermal_link_size/2 + 0.02}" rpy="0 0 0"/>
+    </joint>
+
+    <link name="thermal_optical_frame"/>
+    <joint name="thermal_optical_joint" type="fixed">
+        <parent link="thermal_link"/>
+        <child link="thermal_optical_frame"/>
+        <origin xyz="0 0 0" rpy="${-M_PI/2} 0 ${-M_PI/2}"/>
+    </joint>
+
+    <!-- mmWave radar link (simulated as low-res ray sensor -> PointCloud2) -->
+    <link name="radar_link">
+        <visual>
+            <geometry>
+                <box size="${radar_link_size} ${radar_link_size} ${radar_link_size}"/>
+            </geometry>
+            <material name="yellow">
+                <color rgba="0.9 0.9 0.1 1.0"/>
+            </material>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="${radar_link_size} ${radar_link_size} ${radar_link_size}"/>
+            </geometry>
+        </collision>
+        <inertial>
+            <mass value="0.1"/>
+            <inertia ixx="1e-6" ixy="0.0" ixz="0.0" iyy="1e-6" iyz="0.0" izz="1e-6"/>
+        </inertial>
+    </link>
+
+    <joint name="radar_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="radar_link"/>
+        <origin xyz="${base_length/4} 0 ${base_height/2 + radar_link_size/2 + 0.03}" rpy="0 0 0"/>
+    </joint>
+
+    <!-- Ultrasonic rangefinder (HC-SR04-like) -->
+    <link name="ultrasonic_front_link">
+        <visual>
+            <geometry>
+                <cylinder radius="0.02" length="${ultrasonic_link_size}"/>
+            </geometry>
+            <material name="white">
+                <color rgba="0.9 0.9 0.9 1.0"/>
+            </material>
+        </visual>
+        <collision>
+            <geometry>
+                <cylinder radius="0.02" length="${ultrasonic_link_size}"/>
+            </geometry>
+        </collision>
+        <inertial>
+            <mass value="0.05"/>
+            <inertia ixx="1e-6" ixy="0.0" ixz="0.0" iyy="1e-6" iyz="0.0" izz="1e-6"/>
+        </inertial>
+    </link>
+
+    <joint name="ultrasonic_front_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="ultrasonic_front_link"/>
+        <origin xyz="${base_length/2} 0 ${base_height/2}" rpy="0 0 0"/>
     </joint>
         <!-- *** ADD LASER SCANNER LINK AND JOINT *** -->
     <link name="laser_link">
@@ -219,6 +310,15 @@
      <gazebo reference="camera_link">
          <material>Gazebo/Green</material>
     </gazebo>
+    <gazebo reference="thermal_link">
+         <material>Gazebo/Orange</material>
+    </gazebo>
+    <gazebo reference="radar_link">
+         <material>Gazebo/Yellow</material>
+    </gazebo>
+    <gazebo reference="ultrasonic_front_link">
+         <material>Gazebo/White</material>
+    </gazebo>
     <gazebo reference="left_wheel_link">
         <material>Gazebo/Black</material>
     </gazebo>
@@ -309,6 +409,39 @@
         </sensor>
     </gazebo>
 
+    <!-- Thermal camera (simulated as grayscale image) -->
+    <gazebo reference="thermal_link">
+        <sensor type="camera" name="thermal_camera">
+            <always_on>true</always_on>
+            <update_rate>10.0</update_rate>
+            <camera name="thermal_sim_camera">
+                <horizontal_fov>${60.0*M_PI/180.0}</horizontal_fov>
+                <image>
+                    <width>320</width>
+                    <height>240</height>
+                    <format>L8</format>
+                </image>
+                <clip>
+                    <near>0.1</near>
+                    <far>10.0</far>
+                </clip>
+                <noise>
+                    <type>gaussian</type>
+                    <mean>0.0</mean>
+                    <stddev>0.01</stddev>
+                </noise>
+            </camera>
+            <plugin name="thermal_camera_plugin" filename="libgazebo_ros_camera.so">
+                <ros>
+                    <remapping>image_raw:=thermal/image_raw</remapping>
+                    <remapping>camera_info:=thermal/camera_info</remapping>
+                </ros>
+                <camera_name>thermal</camera_name>
+                <frame_name>thermal_optical_frame</frame_name>
+            </plugin>
+        </sensor>
+    </gazebo>
+
 <!-- *** ADD LASER SCANNER PLUGIN *** -->
     <gazebo reference="laser_link">
         <sensor type="ray" name="laser_sensor">
@@ -348,6 +481,78 @@
         </sensor>
     </gazebo>
     <!-- *** END LASER SCANNER PLUGIN *** -->
+
+    <!-- mmWave radar approximation (low-res ray sensor -> PointCloud2) -->
+    <gazebo reference="radar_link">
+        <sensor type="ray" name="radar_sensor">
+            <pose>0 0 0 0 0 0</pose>
+            <visualize>false</visualize>
+            <update_rate>5</update_rate>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>60</samples>
+                        <resolution>1</resolution>
+                        <min_angle>-${M_PI/3}</min_angle>
+                        <max_angle>${M_PI/3}</max_angle>
+                    </horizontal>
+                </scan>
+                <range>
+                    <min>0.2</min>
+                    <max>15.0</max>
+                    <resolution>0.05</resolution>
+                </range>
+                <noise>
+                    <type>gaussian</type>
+                    <mean>0.0</mean>
+                    <stddev>0.05</stddev>
+                </noise>
+            </ray>
+            <plugin name="gazebo_ros_radar_controller" filename="libgazebo_ros_ray_sensor.so">
+                <ros>
+                    <remapping>~/out:=radar/points</remapping>
+                </ros>
+                <frame_name>radar_link</frame_name>
+                <output_type>sensor_msgs/PointCloud2</output_type>
+            </plugin>
+        </sensor>
+    </gazebo>
+
+    <!-- Ultrasonic range (Range message) -->
+    <gazebo reference="ultrasonic_front_link">
+        <sensor type="ray" name="ultrasonic_front">
+            <pose>0 0 0 0 0 0</pose>
+            <visualize>false</visualize>
+            <update_rate>10</update_rate>
+            <ray>
+                <scan>
+                    <horizontal>
+                        <samples>1</samples>
+                        <resolution>1</resolution>
+                        <min_angle>0</min_angle>
+                        <max_angle>0</max_angle>
+                    </horizontal>
+                </scan>
+                <range>
+                    <min>0.02</min>
+                    <max>4.0</max>
+                    <resolution>0.01</resolution>
+                </range>
+                <noise>
+                    <type>gaussian</type>
+                    <mean>0.0</mean>
+                    <stddev>0.01</stddev>
+                </noise>
+            </ray>
+            <plugin name="ultrasonic_front_plugin" filename="libgazebo_ros_range.so">
+                <ros>
+                    <remapping>~/out:=ultrasonic/front</remapping>
+                </ros>
+                <frame_name>ultrasonic_front_link</frame_name>
+                <radiation_type>ultrasound</radiation_type>
+            </plugin>
+        </sensor>
+    </gazebo>
 
 
 
