@@ -1,118 +1,132 @@
-# Human Detection Package
+# SmokeNav 
 
-## Overview
 
-Human detection using **thermal camera** + **mmWave radar** fusion for autonomous mobile robots in smoke-filled environments.
 
-## Pipeline
+- **Simulation assets**: `src/project_sim/`
+  - Robot Xacro: `src/project_sim/urdf/robot.urdf.xacro`
+  - Gazebo worlds: `src/project_sim/worlds/`
+- **ROS 2 packages** live under `src/` and are built with `colcon`.
 
-### Radar Pipeline
-```
-/radar/pointcloud (PointCloud2) → DBSCAN clustering → cluster centers → /radar/human_clusters
-```
-- Converts PointCloud2 to XYZ array
-- Filters by max range (10m)
-- DBSCAN clustering (eps=0.3, min_samples=5)
-- Publishes flattened 3D cluster centers: `[x1, y1, z1, x2, y2, z2, ...]` in robot frame
+## Implemented packages
 
-### Thermal Pipeline
-```
-/thermal/image_raw (Image) → temperature threshold → bounding boxes → /thermal/human_positions
-```
-- Temperature threshold: 30.0-37.5°C
-- Contour detection with area and aspect ratio filtering
-- Publishes normalized 2D positions: `[x1, y1, x2, y2, ...]` (values 0-1)
+- **`project_sim`**: Gazebo Classic bringup + robot spawn
+  - Launches `custom-flat.world`
+  - Spawns the diff-drive robot from Xacro
+  - Runs `robot_state_publisher`
+  - Publishes a static TF `map -> odom` (convenience for tools expecting `map`)
 
-### Fusion Pipeline
-```
-/thermal/human_positions + /radar/human_clusters → 3D→2D projection → spatial matching → /humans
-```
-- Projects radar 3D points to 2D image plane
-- Matches by pixel distance (< 50px)
-- Publishes 3D human positions as PoseArray
+- **`project_nav`**: reactive navigation
+  - Uses a LaserScan topic to compute free sectors and publishes `cmd_vel`
+  - Intended behavior: **continuous obstacle avoidance / wandering** (no global goal yet)
 
-## Topics
+- **`project_smoke`**: smoke degradation (LaserScan)
+  - Subscribes `/scan` and republishes degraded scan on `/scan_smoked`
+  - Controlled by `density` in \([0..1]\)
 
-| Topic | Type | Description |
-|-------|------|-------------|
-| **Input** |
-| `/radar/pointcloud` | `sensor_msgs/PointCloud2` | mmWave radar point cloud |
-| `/thermal/image_raw` | `sensor_msgs/Image` | Thermal camera feed |
-| **Intermediate** |
-| `/radar/human_clusters` | `std_msgs/Float32MultiArray` | Radar cluster centers `[x,y,z, ...]` |
-| `/thermal/human_positions` | `std_msgs/Float32MultiArray` | Normalized blob centers `[x,y, ...]` (0-1) |
-| `/thermal/human_boxes` | `visualization_msgs/MarkerArray` | Bounding boxes for RViz |
-| **Output** |
-| `/humans` | `geometry_msgs/PoseArray` | Fused human positions (3D) |
+- **`human_detector`** (from `detection` branch): thermal + radar fusion pipeline
+  - Radar clustering + thermal blob detection + fusion node
+  - Refer to its launch: `src/human_detector/launch/human_detection_launch.launch.py`
 
-## Nodes
+- **`project_detection`**: simple Gazebo model-state “detection stub”
+  - Publishes `/human_pose` by reading `/gazebo/model_states` for models named `human_*`
+  - Useful as a ground-truth baseline and for end-to-end plumbing
 
-| Node | Function |
-|------|----------|
-| `radar_detection_node` | Clusters radar points using DBSCAN |
-| `thermal_detection_node` | Detects humans via temperature thresholding |
-| `fusion_node` | Projects and matches detections |
+- **`project_eval`**: lightweight CSV metrics logger
+  - Logs: odom path length, cmd_vel count, and whether a human pose was received
+  - Writes CSV under `./logs/` when using scenario launches
 
-## Parameters
+## Expected simulation topics (core)
 
-### Radar Node
-| Parameter | Default |
-|-----------|---------|
-| `cluster_epsilon` | 0.3 |
-| `cluster_min_points` | 5 |
+- **Motion**: `/cmd_vel` (in), `/odom` (out), TF tree including `odom -> base_link`
+- **LiDAR**: `/scan`
+- **IMU**: `/imu/data`
+- **RGBD camera**: `rgb/image_rect_color`, `depth/image_rect_raw`, `depth/color/points`
+- **Thermal camera (simulated camera)**: `thermal/image_raw`
+- **Radar (approx ray → pointcloud)**: `radar/points`
+- **Ultrasonic**: `ultrasonic/front` (`sensor_msgs/Range`)
+- **Smoke-degraded scan**: `/scan_smoked`
 
-### Thermal Node
-| Parameter | Default |
-|-----------|---------|
-| `temp_min` | 30.0 |
-| `temp_max` | 37.5 |
-| `min_area` | 100 |
-| `max_area` | 5000 |
-| `min_aspect_ratio` | 0.3 |
-| `max_aspect_ratio` | 3.0 |
-| `debug` | False |
+## Build (workspace root)
 
-## Dependencies
-
-- ROS2 Humble
-- OpenCV (`cv_bridge`)
-- scikit-learn
-- numpy
-
-## Usage
-
-### 1. Link
 ```bash
-# Create symlink to ROS2 workspace
-ln -s ~/SmokeNav/src/human_detector ~/ros2_ws/src/human_detector
-```
-
-### 2. Build
-```bash
-cd ~/ros2_ws
-colcon build --packages-select human_detector --symlink-install
+colcon build --symlink-install
 source install/setup.bash
 ```
 
-### 3. Install Python Dependencies
+
+## Launch commands (copy/paste)
+
+### 1) Gazebo + robot only
+
 ```bash
-cd ~/SmokeNav
+source install/setup.bash
+ROS_LOG_DIR=$PWD/.roslog ros2 launch project_sim sim_bringup.launch.py
+```
+
+### 2) Gazebo + reactive navigation
+
+```bash
+source install/setup.bash
+ROS_LOG_DIR=$PWD/.roslog ros2 launch project_sim sim_with_nav.launch.py
+```
+
+### 3) Gazebo + nav + smoke degradation + (detection stub)
+
+```bash
+source install/setup.bash
+ROS_LOG_DIR=$PWD/.roslog ros2 launch project_sim sim_with_smoke.launch.py density:=0.7
+```
+
+### 4) Scenario presets (also writes CSV logs)
+
+```bash
+source install/setup.bash
+ROS_LOG_DIR=$PWD/.roslog ros2 launch project_sim scenario_clear.launch.py
+ROS_LOG_DIR=$PWD/.roslog ros2 launch project_sim scenario_moderate.launch.py
+ROS_LOG_DIR=$PWD/.roslog ros2 launch project_sim scenario_dense.launch.py
+```
+
+CSV outputs (relative to repo root):
+- `logs/metrics_clear.csv`
+- `logs/metrics_moderate.csv`
+- `logs/metrics_dense.csv`
+
+### 5) Human detection (thermal + radar fusion)
+
+First install Python deps required by `human_detector` (if you haven’t yet):
+
+```bash
 ./setup.sh
-source ~/ros2_venv/bin/activate
 ```
 
-### 4. Run the Pipeline
+Then launch the detection pipeline (it expects thermal + radar topics):
+
 ```bash
-# Terminal 1: Radar processing
-ros2 run human_detector radar_detection_node
-
-# Terminal 2: Thermal processing
-ros2 run human_detector thermal_detection_node
-
-# Terminal 3: Sensor fusion
-ros2 run human_detector fusion_node
+source install/setup.bash
+ROS_LOG_DIR=$PWD/.roslog ros2 launch human_detector human_detection_launch.launch.py
 ```
 
-## References
+## What you should see (sanity checklist)
 
-- Cai et al. ["Robust Human Detection under Visual Degradation via Thermal and mmWave Radar Fusion"](https://arxiv.org/pdf/2307.03623) (2023)
+- **Robot moves by itself** when `project_nav` is running (reactive wandering).
+- Increasing `density` makes navigation **less stable** (more scan dropouts/shorter effective range).
+- `project_detection` publishes `/human_pose` if the world contains a model named `human_*`.
+- `project_eval` writes CSV logs when you use `scenario_*.launch.py`.
+
+## Next project goals / tasks
+
+- **Smoke modeling improvements**
+  - Degrade additional modalities (camera/thermal/radar) using a shared `smoke_density` parameter
+  - Introduce controllable dropouts and spurious detections for radar/thermal
+
+- **Navigation upgrade**
+  - Replace reactive wandering with goal-based navigation (Nav2 + AMCL + map, or SLAM)
+  - Add RViz goal interface and proper `map` frame handling (AMCL instead of static `map -> odom`)
+
+- **Detection realism**
+  - Make thermal simulate “hot human target” more explicitly (temperature map / emissive human model)
+  - Improve radar simulation beyond ray pointcloud (Doppler/velocity is not simulated currently)
+
+- **Evaluation**
+  - Add repeatable scenario runner (multiple seeds, multiple humans, moving targets)
+  - Metrics: success rate, collisions, time-to-detect, precision/recall vs ground truth
