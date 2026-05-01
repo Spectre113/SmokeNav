@@ -15,6 +15,7 @@ setup(
     entry_points={
         'console_scripts': [
             'human_localization = human_localization.human_localization_node:main',
+            'human_pose_adapter = human_localization.human_pose_adapter_node:main',
         ],
     },
 )
