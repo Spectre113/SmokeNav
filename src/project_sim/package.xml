@@ -13,6 +13,10 @@
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>xacro</exec_depend>
+  <exec_depend>project_smoke</exec_depend>
+  <exec_depend>project_detection</exec_depend>
+  <exec_depend>project_nav</exec_depend>
+  <exec_depend>human_localization</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
