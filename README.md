@@ -1,23 +1,23 @@
 # SmokeNav (ROS 2 Humble + Gazebo Classic)
 
-Проект симуляции мобильного робота, который едет к цели (человек в Gazebo), избегает препятствия и "поглощает" цель при достижении.
+This project simulates a mobile robot that navigates toward a target (a human in Gazebo), avoids obstacles, and "consumes" the target when it gets close enough.
 
-## 1. Структура
+## 1. Project Structure
 
-- `src/project_sim` - мир, спавн робота, full-stack launch
-- `src/project_nav` - навигация и обход препятствий
-- `src/project_detection` - детекция цели в Gazebo + маркер цели
-- `src/human_localization` - трекинг/адаптация цели в `/target_info`
-- `src/project_smoke` - фильтрация лидара по дыму
+- `src/project_sim` - world, robot spawn, full-stack launch
+- `src/project_nav` - navigation and obstacle avoidance
+- `src/project_detection` - Gazebo target detection + target marker
+- `src/human_localization` - target tracking/adaptation into `/target_info`
+- `src/project_smoke` - lidar smoke filtering
 
-## 2. Требования
+## 2. Requirements
 
 - Ubuntu 22.04
 - ROS 2 Humble
 - Gazebo Classic (`gazebo_ros`)
 - `colcon`
 
-Пример базовой установки:
+Example base installation:
 
 ```bash
 sudo apt update
@@ -27,7 +27,7 @@ sudo apt install -y \
   python3-colcon-common-extensions
 ```
 
-## 3. Первичная подготовка
+## 3. Initial Setup
 
 ```bash
 cd ~/AMR_ws/src/SmokeNav-test
@@ -35,7 +35,7 @@ bash setup.sh
 source ~/ros2_venv/bin/activate
 ```
 
-## 4. Сборка
+## 4. Build
 
 ```bash
 cd ~/AMR_ws/src/SmokeNav-test
@@ -44,7 +44,7 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-## 5. Запуск full stack
+## 5. Run Full Stack
 
 ```bash
 cd ~/AMR_ws/src/SmokeNav-test
@@ -53,38 +53,38 @@ source install/setup.bash
 ros2 launch project_sim sim_full_stack.launch.py
 ```
 
-Запускается:
+This launches:
 - Gazebo world + robot spawn
 - smoke filter
-- detector + marker цели
+- detector + target marker
 - localization + adapter
 - sector analyzer + goal-aware navigation
 
-## 6. Важное поведение
+## 6. Important Behavior
 
-- Робот едет к цели по `/target_info`.
-- При близком подходе цель скрывается для навигации (чтобы робот не крутился вокруг).
-- При достижении порога `consume_distance` цель удаляется из Gazebo:
-  - удаляется `human_0`
-  - удаляется `goal_target_marker`
-  - цель больше не появляется в текущем запуске.
+- The robot follows the target using `/target_info`.
+- At close range, the target is hidden for navigation (to prevent spinning around it).
+- When `consume_distance` is reached, the target is removed from Gazebo:
+  - `human_0` is deleted
+  - `goal_target_marker` is deleted
+  - the target does not reappear in the same run
 
-## 7. Где менять позицию человека
+## 7. Where to Change Human Position
 
-Файл мира:
+World file:
 
 - `src/project_sim/worlds/custom-flat.world`
 
-Ищите:
+Look for:
 
 ```xml
 <model name="human_0">
   <pose>1.5 0.0 0.0 0 0 0</pose>
 ```
 
-Формат `pose`: `x y z roll pitch yaw`.
+`pose` format: `x y z roll pitch yaw`.
 
-После изменения:
+After editing:
 
 ```bash
 cd ~/AMR_ws/src/SmokeNav-test
@@ -94,7 +94,7 @@ source install/setup.bash
 ros2 launch project_sim sim_full_stack.launch.py
 ```
 
-## 8. Полезная диагностика
+## 8. Useful Diagnostics
 
 ```bash
 ros2 topic echo /target_info --once
@@ -102,9 +102,9 @@ ros2 topic echo /cmd_vel --once
 ros2 topic echo /gazebo/model_states --once
 ```
 
-## 9. Если Gazebo "not responding" / `gzserver exit code 255`
+## 9. If Gazebo Is "Not Responding" / `gzserver exit code 255`
 
-Обычно причина: завис старый процесс Gazebo (порт master уже занят).
+Most common reason: an old Gazebo process is still running (master port already occupied).
 
 ```bash
 pkill -f gzclient
@@ -117,14 +117,14 @@ ros2 daemon stop
 ros2 daemon start
 ```
 
-И потом запуск заново (см. раздел 5).
+Then launch again (see section 5).
 
-## 10. Текущие ключевые launch-параметры цели
+## 10. Current Target Launch Parameters
 
-В `src/project_detection/launch/detection_from_gazebo.launch.py`:
+In `src/project_detection/launch/detection_from_gazebo.launch.py`:
 
 - `consume_on_reach: true`
 - `consume_distance: 0.75`
 - `target_entity_name: "human_0"`
 
-Если хотите более раннее исчезновение цели, уменьшайте `consume_distance`.
+To make the target disappear earlier, decrease `consume_distance`.
