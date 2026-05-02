@@ -4,15 +4,21 @@
 __pycache__/
 *.py[codz]
 *$py.class
+<<<<<<< HEAD
 *.pyo
 *.pyd
+=======
+>>>>>>> origin/main
 
 # Virtual environments
 .venv/
 venv/
 env/
 ENV/
+<<<<<<< HEAD
 ros2_venv/
+=======
+>>>>>>> origin/main
 
 # Python tooling
 .pytest_cache/
@@ -22,7 +28,10 @@ ros2_venv/
 .coverage
 .coverage.*
 htmlcov/
+<<<<<<< HEAD
 .python-version
+=======
+>>>>>>> origin/main
 
 # Jupyter
 .ipynb_checkpoints/
@@ -34,13 +43,19 @@ build/
 install/
 log/
 devel/
+<<<<<<< HEAD
 *.repos
+=======
+>>>>>>> origin/main
 
 # Colcon / compilation
 compile_commands.json
 .colcon/
+<<<<<<< HEAD
 CMakeFiles/
 CMakeCache.txt
+=======
+>>>>>>> origin/main
 
 # ROS bag files
 *.bag
@@ -53,7 +68,10 @@ CMakeCache.txt
 *.so
 *.o
 *.a
+<<<<<<< HEAD
 *.dylib
+=======
+>>>>>>> origin/main
 
 # =========================
 # Environment / secrets
@@ -66,15 +84,19 @@ CMakeCache.txt
 # =========================
 .vscode/
 .idea/
+<<<<<<< HEAD
 *.code-workspace
 *.swp
 *.swo
+=======
+>>>>>>> origin/main
 
 # =========================
 # OS files
 # =========================
 .DS_Store
 Thumbs.db
+<<<<<<< HEAD
 
 # =========================
 # Testing package
@@ -86,3 +108,5 @@ mmwave_dataset_publisher
 # =========================
 *.orig
 *.state
+=======
+>>>>>>> origin/main
