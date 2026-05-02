@@ -1,0 +1,5 @@
+human_localization:
+  ros__parameters:
+    match_distance: 1.0
+    min_hits: 3
+    max_misses: 5

@@ -1,0 +1,88 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[codz]
+*$py.class
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+ros2_venv/
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+.python-version
+
+# Jupyter
+.ipynb_checkpoints/
+
+# =========================
+# ROS / colcon / catkin
+# =========================
+build/
+install/
+log/
+devel/
+*.repos
+
+# Colcon / compilation
+compile_commands.json
+.colcon/
+CMakeFiles/
+CMakeCache.txt
+
+# ROS bag files
+*.bag
+*.db3
+*.sqlite3
+
+# =========================
+# C / C++ / shared objects
+# =========================
+*.so
+*.o
+*.a
+*.dylib
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.envrc
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Testing package
+# =========================
+mmwave_dataset_publisher
+
+# =========================
+# Misc
+# =========================
+*.orig
+*.state
