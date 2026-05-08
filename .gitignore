@@ -69,3 +69,6 @@ Thumbs.db
 # Testing package
 # =========================
 mmwave_dataset_publisher
+
+.roslog
+logs/
