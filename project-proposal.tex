@@ -1,0 +1,248 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+%Template version as of 6/27/2024
+
+\usepackage{cite}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{url}
+
+\renewcommand{\thetable}{\Roman{table}}\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    citecolor=cyan,
+    pdftitle={Overleaf Example},
+    pdfpagemode=FullScreen,
+}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\begin{document}
+
+\title{SmokeNav: Autonomous Navigation and Human Detection in Smoke \\
+}
+
+\author{\IEEEauthorblockN{1\textsuperscript{st} Vladimir Toporkov}
+\IEEEauthorblockA{\textit{Computer Science and Engineering} \\
+\textit{Innopolis university}\\
+Innopolis, Russia \\
+v.toporkov@innopolis.university}
+\and
+\IEEEauthorblockN{2\textsuperscript{nd} Andrey Krasnov}
+\IEEEauthorblockA{\textit{Computer Science and Engineering} \\
+\textit{Innopolis university}\\
+Innopolis, Russia \\
+an.krasnov@innopolis.university}
+\and
+\IEEEauthorblockN{3\textsuperscript{rd} Askar Kadyrgulov}
+\IEEEauthorblockA{\textit{Computer Science and Engineering} \\
+\textit{Innopolis university}\\
+Innopolis, Russia \\
+a.kadyrgulov@innopolis.university}
+\and
+\IEEEauthorblockN{4\textsuperscript{th} Anas Khmais Hamrouni}
+\IEEEauthorblockA{\textit{Computer Science and Engineering} \\
+\textit{Innopolis university}\\
+Innopolis, Russia \\
+a.hamrouni@innopolis.university}
+}
+
+\maketitle
+
+\begin{abstract}
+Autonomous navigation in smoke area is a key task of mobile robotics, especially in the context of search and rescue and emergency operations, where steady operation is required with low visibility. This project proposes the development of a mobile robot with the priority task of reliable navigation in smoke conditions and the secondary task of detecting people in limited visibility. The architecture of the system will be implemented on the basis of the Robot Operating System 2 and built on a modular principle with a division into levels of perception, planning and management. Special attention is paid to resistance to noise and degradation of sensory data, characteristic of a smoky environment, as well as the development of its own control algorithm that ensures stability of movement with measurement uncertainties. The validation of the approach will be carried out first in a simulation environment with an analysis of navigation accuracy and noise tolerance, after which it is expected to be implemented and experimentally verified on a physical platform.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Autonomous mobile robot, Smoke navigation, Search and rescue, Human detection, Robust motion control, ROS 2
+\end{IEEEkeywords}
+
+\section*{Introduction}
+In recent years, research has explored the use of millimeter‑wave (mmWave) radar as a non‑optical sensing modality for autonomous navigation in visually degraded environments such as smoke‑filled spaces. For example, Huang et al. \cite{huang_mmWaveNav} proposed an end‑to‑end deep reinforcement learning method that uses lightweight mmWave radar data to enable a mobile robot to navigate through smoke‑filled environments when traditional cameras and LiDAR fail to provide reliable measurements.\\
+
+The goal of this project is to design and simulate an autonomous mobile robot that can navigate in smoke-filled rooms and simultaneously detect the presence of people. The system is focused on reliable operation in conditions of reduced visibility by combining several sensors.\\
+
+\textbf{Navigation}
+\newline
+The primary task of the system is reliable navigation in a smoky space. The robot must be able to locate and avoid obstacles, despite sensor noise and partial data loss due to smoke.\\
+
+\textbf{Detection}
+\newline
+The second task is to detect people. In emergency situations, quick detection of survivors is essential. The robot must combine several detection methods to increase detection reliability and reduce the number of false alarms.\\
+
+\section*{Method}
+The approach consists of 2 major parts: robot navigation in smoke-filled environment and human detection in smoke environment. We start by reviewing the methods to understand to determine the appropriate sensing modalities for both subsystems. Correct and accurate solution to this problem allows us to simulate the exact behavior of a robot in our conditions and then assemble such a robot and test it in real or near-real conditions.
+
+\subsection*{Navigation}\\
+
+\textbf{Related Work}
+\newline
+Navigation in smoke requires sensors that can see through obscurants. LiDAR is the standard sensor for robotic navigation in clean environments, providing high-precision range measurements for mapping and localization. In smoke, LiDAR performance degrades due to scattering and absorption, but does not fail completely. Studies show that LiDAR can still detect obstacles in moderate smoke, though effective range decreases and noise increases. The degree of degradation depends on smoke density and LiDAR wavelength.\\
+
+mmWave radar offers an alternative. Its longer wavelengths penetrate smoke effectively, providing reliable range measurements even in dense smoke where LiDAR struggles. However, radar has lower resolution and produces sparser data than LiDAR. Thermal cameras detect infrared radiation and can see through smoke to some extent, though they provide no range information directly. Ultrasonic sensors are unaffected by smoke but have very short range.\\
+
+Most existing systems combine multiple sensors for robustness. The SmokeBot project \cite{kleiner_smokebot_2018} demonstrated a robot for low-visibility disaster scenarios using radar, LiDAR, and thermal imaging. Others have proposed adaptive fusion where sensor weighting changes based on estimated smoke density.\\
+
+\textbf{Approach}
+We will test the following sensors in simulation:
+
+\begin{itemize}
+    \item LiDAR
+    \item mmWave radar
+    \item Thermal camera
+    \item Ultrasonic sensor
+    \item Optical camera (as baseline for comparison)
+\end{itemize}
+
+The simulation will model smoke at different densities (light, moderate, thick) and evaluate each sensor's ability to detect obstacles at various distances, provide data suitable for mapping and localization and maintain performance as smoke density increases.\\
+
+After simulation, we will select the most effective sensors. If one sensor proves sufficient in all smoke conditions, we will use only that sensor to keep costs low. If multiple sensors are needed, we will choose the minimal set that ensures reliable navigation. Cost will be a major factor in selection.\\
+
+\subsection*{Detection}
+\textbf{Related Work}
+\newline
+Human detection in degraded visibility environments has been widely studied in the context of search-and-rescue robotics, autonomous driving, and surveillance systems. Traditional vision-based approaches rely primarily on RGB cameras and convolutional neural networks (CNNs). For example, Redmon et al. introduced YOLO, a real-time object detection framework that significantly improved detection speed and performance in standard visual conditions \cite{yolo}. However, such methods are highly sensitive to visibility degradation caused by smoke, fog, or low illumination.\\
+
+To address the limitations of optical systems, researchers have explored thermal imaging for human detection. Davis and Sharma proposed a background-subtraction-based method for pedestrian detection using thermal cameras, demonstrating improved robustness under low-light conditions \cite{thermal_detection}. More recent deep-learning-based approaches, such as those presented by Hwang et al. in the KAIST Multispectral Pedestrian Dataset, combine RGB and thermal data to enhance detection reliability \cite{kaist}. Nevertheless, optical-based systems remain vulnerable in dense smoke scenarios due to scattering and attenuation effects\\
+
+Radar-based human detection has gained increasing attention due to its robustness in visually degraded environments. Patole et al. provided a comprehensive overview of automotive radar systems, highlighting their resilience to weather and visibility conditions \cite{radar_review}. In indoor environments, mmWave radar has been used for motion detection and tracking through Doppler processing and micro-Doppler analysis. Molchanov et al. demonstrated human activity recognition using radar micro-Doppler signatures \cite{micro_doppler}. Such techniques allow detection of moving humans even when optical sensors fail.\\
+
+Recent research trends focus on multi-sensor fusion. For example, Khaleghi et al. reviewed multi-sensor data fusion techniques and emphasized probabilistic approaches for improving reliability in uncertain environments \cite{sensor_fusion}. Sensor fusion enables systems to compensate for the weaknesses of individual sensors and improve detection confidence.\\
+
+Despite significant progress, there remains a gap in integrated systems specifically designed for smoke-filled indoor environments, where both navigation and human detection must operate reliably under sensor degradation.\\
+
+\textbf{Approach}
+\newline
+The proposed detection framework consists of two primary sensing modalities: mmWave radar and thermal imaging.\\
+
+The mmWave radar is responsible for detecting motion and estimating the range and velocity of potential human targets using Doppler information. Radar returns are processed to generate a point cloud representation. Clustering is performed using the DBSCAN algorithm to identify candidate objects. For moving targets, Doppler velocity is used to distinguish humans from static obstacles. A Kalman filter is applied to track detected targets over time and reduce noise.\\
+
+Thermal imaging is used to detect heat signatures consistent with human body temperature. The thermal image is processed using temperature thresholding and contour extraction techniques. Candidate regions are filtered based on size and shape constraints to reduce false positives caused by hot objects in the environment.\\
+
+To improve reliability, a probabilistic sensor fusion strategy is applied. The system estimates the posterior probability of human presence given radar and thermal observations:
+
+\begin{center}
+    $P(\text{Human} \mid \text{Radar}, \text{Thermal})$
+\end{center}
+
+Detection confidence increases when both sensors confirm a target in approximately the same spatial region. In cases where only one modality detects a candidate, a lower confidence score is assigned.\\
+
+Additionally, the system models smoke-induced degradation by introducing noise and range reduction in the sensor simulation. This allows evaluation of detection robustness under varying smoke densities.\\
+
+
+\subsection*{Simulation details}
+The proposed system is evaluated in a simulated indoor environment representing a smoke-filled building during an emergency scenario. The environment consists of interconnected rooms and corridors with static obstacles and one or more human targets. The goal of the simulation is to assess navigation robustness and human detection performance under degraded visibility conditions.\\
+
+The robot is modeled as a differential-drive platform equipped with virtual LiDAR, IMU, wheel encoders, mmWave radar, and a thermal imaging sensor. Smoke is modeled indirectly through sensor degradation rather than visual rendering. A smoke density parameter controls the level of environmental degradation, affecting sensor range, noise level, and detection reliability.\\
+
+LiDAR degradation is simulated by reducing effective sensing range and increasing measurement noise. The mmWave radar is modeled as a point-based detection system providing range, angle, and velocity estimates. Moving targets generate distinguishable motion signatures, while measurement uncertainty and occasional spurious detections simulate realistic radar behavior. Thermal sensing is implemented as a temperature map with elevated values assigned to human targets. Thermal noise and heat distractors are included to evaluate robustness against false positives.\\
+
+Detection reliability is assessed using sensor fusion between radar-based motion cues and thermal-based heat signatures. Higher confidence is assigned when both modalities agree spatially, while single-sensor detections are treated with reduced certainty.\\
+
+Experiments are conducted under multiple smoke density levels, including clear, moderate, and dense conditions. Additional scenarios include static and moving humans, multiple targets, and environmental heat sources. Performance is evaluated using navigation accuracy, collision rate, precision, recall, detection latency, and tracking stability.\\
+
+The simulation framework enables systematic and repeatable evaluation of the proposed multi-sensor approach under controlled yet realistic emergency conditions.\\
+
+\subsection*{Robot implementation details}
+The physical implementation is considered a secondary stage of the project, since the primary verification is performed during the modeling process. Thus, the hardware implementation is planned as a simplified proof-of-concept platform, rather than a fully optimized robot for emergency response.\\
+
+The robot is built on a compact chassis with differential drive, suitable for indoor use. It is expected to have integrated wheel sensors and an IMU for basic odometry and condition assessment. For ease of perception, the platform will include the mmWave radar as the main detection sensor in low visibility conditions, which can be additionally supplemented with a thermal sensor, if time and resources allow. Lidar can be used for navigation in low or moderate smoke conditions, depending on the integration capability.\\
+
+The algorithms for combining sensors and detection developed during the simulation will be adapted to work on an integrated on-board computer with moderate computing capabilities. Given the time constraints, priority will be given to stable navigation and basic human detection functions, rather than full performance optimization.\\
+
+\section*{Dependencies}
+
+For autonomous navigation, this project relies on several software libraries and drivers. For lidar integration, we use the ROS 2 driver for the XV-11 lidar \cite{xv11_driver}, which provides ready-to-use ROS 2 nodes and documentation for integrating low-cost vacuum robot lidars into robotic systems.\\
+
+For human detection, the project uses millimeter‑wave (mmWave) radar sensors. Seeed Studio provides detailed documentation for these sensors, including setup, parameters, and typical applications \cite{seeed_mmwave_intro}, making them suitable for detecting people even in low-visibility conditions.\\
+
+For distance measurements and obstacle avoidance, the robot uses the HC‑SR04 ultrasonic sensor. The library \href{https://github.com/mataruzz/libHCSR04}{\texttt{libHCSR04}} provides low-level access to the sensor for Raspberry Pi 3B+ and includes a ROS 2 wrapper that publishes distance and velocity data as ROS 2 topics, simplifying integration into ROS 2 robotic systems \cite{ultrasound_hcsr04}.
+
+\section*{Timeline}
+The timeline may be adjusted depending on project constraints and implementation progress.\\\\
+\textbf{Week 1:} Literature review refinement and finalization of system architecture (navigation and detection modules definition). \
+
+\textbf{Week 2:} Development of the simulation environment (indoor layout, obstacles, human models). \
+
+\textbf{Week 3:} Implementation of robot kinematics and basic navigation stack in simulation (odometry, control). \
+
+\textbf{Week 4:} Modeling sensor degradation under different smoke density levels. \
+
+\textbf{Week 5:} Implementation of mmWave-based detection and target tracking in simulation. \
+
+\textbf{Week 6:} Integration of thermal sensing model and development of probabilistic sensor fusion. \
+
+\textbf{Week 7:} Experimental evaluation under multiple scenarios and smoke conditions; collection of performance metrics. \
+
+\textbf{Week 8:} Analysis of results, parameter tuning, and robustness assessment. \
+
+\textbf{Week 9:} (If time permits) Initial hardware integration: chassis setup and basic sensor connection. \
+
+\textbf{Week 10:} (If time permits) Adaptation of core algorithms to onboard hardware and preliminary real-world validation. \
+
+\begin{thebibliography}{00}
+
+\bibitem{huang_mmWaveNav}
+J.‑T. Huang et al., "Cross‑Modal Contrastive Learning of Representations for Navigation Using Lightweight, Low‑Cost Millimeter Wave Radar for Adverse Environmental Conditions." In \textit{IEEE Robotics and Automation Letters}, vol.6 no.2 pp.333‑3340, 2021. Available [Online] \href{https://arxiv.org/pdf/2101.03525}{https://arxiv.org/pdf/2101.03525}. :contentReference[oaicite:0]{index=0}
+
+\bibitem{kleiner_smokebot_2018}
+A. Kleiner and C. Dornhege, "SmokeBot – A mobile robot with novel environmental sensors for inspection of disaster sites with low visibility," Eur. Commission Project Rep., 2018. [Online]. Available: \url{https://www.oru.se/smokebot}
+
+\bibitem{yolo}
+J. Redmon, S. Divvala, R. Girshick, and A. Farhadi, 
+"YOLO: You Only Look Once: Unified, Real-Time Object Detection." 
+In \textit{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)}, 2016, pp. 779-788. 
+Available [Online] \href{https://arxiv.org/pdf/1506.02640.pdf}{https://arxiv.org/pdf/1506.02640.pdf}.
+
+\bibitem{thermal_detection}
+J. W. Davis and V. Sharma, 
+"Robust Detection of People in Thermal Imagery." 
+In \textit{Proceedings of the International Conference on Pattern Recognition (ICPR)}, 2007, pp. 1-4. 
+Available [Online] \href{https://ieeexplore.ieee.org/document/4379560}{https://ieeexplore.ieee.org/document/4379560}.
+
+\bibitem{kaist}
+S. Hwang, J. Park, N. Kim, Y. Choi, and I. S. Kweon, 
+"Multispectral Pedestrian Detection: Benchmark Dataset and Baseline." 
+In \textit{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)}, 2015, pp. 1037-1045. 
+Available [Online] \href{https://arxiv.org/pdf/1504.06692.pdf}{https://arxiv.org/pdf/1504.06692.pdf}.
+
+\bibitem{radar_review}
+S. M. Patole, M. Torlak, D. Wang, and M. Ali, 
+"Automotive Radars: A Review of Signal Processing Techniques." 
+\textit{IEEE Signal Processing Magazine}, vol. 34, no. 2, pp. 22-35, 2017. 
+Available [Online] \href{https://ieeexplore.ieee.org/document/7829030}{https://ieeexplore.ieee.org/document/7829030}.
+
+\bibitem{micro_doppler}
+P. Molchanov, S. Gupta, K. Kim, and K. Pulli, 
+"Multi-Sensor System for Driver’s Hand-Gesture Recognition Using Radar and Vision." 
+In \textit{Proceedings of the IEEE International Conference on Automatic Face and Gesture Recognition (FG)}, 2015, pp. 1-8. 
+Available [Online] \href{https://arxiv.org/pdf/1507.07882.pdf}{https://arxiv.org/pdf/1507.07882.pdf}.
+
+\bibitem{sensor_fusion}
+B. Khaleghi, A. Khamis, F. O. Karray, and S. N. Razavi, 
+"Multisensor Data Fusion: A Review of the State-of-the-Art." 
+\textit{Information Fusion}, vol. 14, no. 1, pp. 28-44, 2013. 
+Available [Online] \href{https://www.sciencedirect.com/science/article/abs/pii/S1566253511000558}{https://www.sciencedirect.com/science/article/pii/S1566253511000647}.
+
+\bibitem{xv11_driver}
+N1kn4x, "xv11-lidar-python: ROS 2 Driver for XV-11 Lidar," GitHub repository, 2023. Available [Online] \href{https://github.com/n1kn4x/xv11_lidar_python}{https://github.com/n1kn4x/xv11-lidar-python}.
+
+\bibitem{seeed_mmwave_intro}
+Seeed Studio, "mmWave Radar Sensor Introduction," Seeed Studio Wiki, 2025. Available [Online] \url{https://github.com/Seeed-Studio/wiki-documents/blob/docusaurus-version/docs/Sensor/mmWave_radar_sensor/mmwave_radar_Intro.md}.
+
+\bibitem{ultrasound_hcsr04}
+Mataruzz, "libHCSR04: HC-SR04 Ultrasonic Sensor Library with ROS2 Wrapper," GitHub repository, 2023. Available [Online] \href{https://github.com/mataruzz/libHCSR04}{https://github.com/mataruzz/libHCSR04}.
+
+\end{thebibliography}
+
+\end{document}

@@ -4,12 +4,15 @@
 __pycache__/
 *.py[codz]
 *$py.class
+*.pyo
+*.pyd
 
 # Virtual environments
 .venv/
 venv/
 env/
 ENV/
+ros2_venv/
 
 # Python tooling
 .pytest_cache/
@@ -19,6 +22,7 @@ ENV/
 .coverage
 .coverage.*
 htmlcov/
+.python-version
 
 # Jupyter
 .ipynb_checkpoints/
@@ -30,10 +34,13 @@ build/
 install/
 log/
 devel/
+*.repos
 
 # Colcon / compilation
 compile_commands.json
 .colcon/
+CMakeFiles/
+CMakeCache.txt
 
 # ROS bag files
 *.bag
@@ -46,6 +53,7 @@ compile_commands.json
 *.so
 *.o
 *.a
+*.dylib
 
 # =========================
 # Environment / secrets
@@ -58,6 +66,9 @@ compile_commands.json
 # =========================
 .vscode/
 .idea/
+*.code-workspace
+*.swp
+*.swo
 
 # =========================
 # OS files
@@ -69,3 +80,9 @@ Thumbs.db
 # Testing package
 # =========================
 mmwave_dataset_publisher
+
+# =========================
+# Misc
+# =========================
+*.orig
+*.state
