@@ -117,7 +117,12 @@ class FakeScanPublisherNode(Node):
         elif scenario == 'front_right_narrow':
             self.fill_sector(ranges, center_start, center_end, semi_open)
             self.fill_sector(ranges, right_start, right_end, narrow_block)
-            self.fill_sector(ranges, center_right_slice_start, center_right_slice_end, narrow_block)
+            self.fill_sector(
+                ranges,
+                center_right_slice_start,
+                center_right_slice_end,
+                narrow_block
+            )
 
         elif scenario == 'front_left_better':
             self.fill_sector(ranges, center_start, center_end, hard_block)

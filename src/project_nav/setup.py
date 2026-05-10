@@ -29,7 +29,7 @@ setup(
     zip_safe=True,
     maintainer='spectre',
     maintainer_email='spectre@todo.todo',
-    description='Reactive navigation test package',
+    description='SmokeNav navigation package',
     license='TODO: License declaration',
     extras_require={
         'test': [
