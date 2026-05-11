@@ -338,7 +338,7 @@ class FusionNode(Node):
         candidates = []
         for x, y, z, strength, _phase in self.latest_heartbeat:
             confidence = self.clamp(
-                self.heartbeat_fallback_confidence * max(strength, self.heartbeat_min_score),
+                self.heartbeat_fallback_confidence,
                 0.0,
                 1.0,
             )

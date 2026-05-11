@@ -134,6 +134,8 @@ def generate_launch_description():
             'passage_min_side_distance': 0.20,
             'passage_danger_alpha_cap': 0.25,
             'passage_linear_speed': 0.14,
+            'passage_target_angular_weight': 0.45,
+            'avoid_target_angular_weight': 0.30,
             'detailed_distance_topic': '/sector_distances_detailed',
             'exploration_hint_topic': '/exploration_hint',
             'use_global_exploration': True,

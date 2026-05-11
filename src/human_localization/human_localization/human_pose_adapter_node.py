@@ -16,8 +16,11 @@ class HumanPoseAdapterNode(Node):
         self.declare_parameter('hide_distance', 0.75)
         self.declare_parameter('reappear_distance', 1.0)
         self.declare_parameter('publish_humans_from_pose', False)
+        self.declare_parameter('pose_timeout_sec', 1.0)
+        self.declare_parameter('confidence_threshold', 0.35)
 
         self.latest_pose = None
+        self.latest_pose_time = None
         self.latest_detected = False
         self.latest_conf = 0.0
         self.target_hidden_close = False
@@ -30,6 +33,8 @@ class HumanPoseAdapterNode(Node):
         self.publish_humans_from_pose = bool(
             self.get_parameter('publish_humans_from_pose').value
         )
+        self.pose_timeout_sec = float(self.get_parameter('pose_timeout_sec').value)
+        self.confidence_threshold = float(self.get_parameter('confidence_threshold').value)
 
         self.create_subscription(PoseStamped, '/human_pose', self.pose_cb, 10)
         self.create_subscription(Bool, '/human_localization/detected', self.detected_cb, 10)
@@ -57,6 +62,7 @@ class HumanPoseAdapterNode(Node):
 
     def loc_pose_cb(self, msg: PoseStamped) -> None:
         self.latest_pose = msg
+        self.latest_pose_time = self.get_clock().now()
         self.publish_target()
 
     def publish_target(self) -> None:
@@ -65,7 +71,7 @@ class HumanPoseAdapterNode(Node):
 
         angle = 0.0
         distance = 0.0
-        if self.latest_pose is not None:
+        if self.has_fresh_pose():
             pose_in_base = transform_pose(self.tf_buffer, self.latest_pose, 'base_link')
             if pose_in_base is not None:
                 x = float(pose_in_base.pose.position.x)
@@ -85,11 +91,21 @@ class HumanPoseAdapterNode(Node):
                             f'Restore target: moved away (dist={distance:.2f} >= {self.reappear_distance:.2f})'
                         )
 
-                target_visible = (self.latest_detected or self.latest_conf > 0.35) and (not self.target_hidden_close)
+                target_visible = (
+                    self.latest_detected and
+                    self.latest_conf >= self.confidence_threshold and
+                    not self.target_hidden_close
+                )
                 detected = 1.0 if target_visible else 0.0
 
         out.data = [detected, angle, distance, self.latest_conf]
         self.target_pub.publish(out)
+
+    def has_fresh_pose(self) -> bool:
+        if self.latest_pose is None or self.latest_pose_time is None:
+            return False
+        age = (self.get_clock().now() - self.latest_pose_time).nanoseconds / 1e9
+        return age <= self.pose_timeout_sec
 
 
 def main(args=None) -> None:

@@ -40,6 +40,8 @@ class GoalAwareNavNode(Node):
         self.declare_parameter('passage_linear_speed', 0.10)
         self.declare_parameter('passage_centerline_gain', 0.45)
         self.declare_parameter('passage_max_centerline_angular', 0.35)
+        self.declare_parameter('passage_target_angular_weight', 0.45)
+        self.declare_parameter('avoid_target_angular_weight', 0.30)
 
         self.declare_parameter('goal_angle_gain', 1.0)
         self.declare_parameter('goal_distance_gain', 0.2)
@@ -128,6 +130,12 @@ class GoalAwareNavNode(Node):
         )
         self.passage_max_centerline_angular = float(
             self.get_parameter('passage_max_centerline_angular').value
+        )
+        self.passage_target_angular_weight = float(
+            self.get_parameter('passage_target_angular_weight').value
+        )
+        self.avoid_target_angular_weight = float(
+            self.get_parameter('avoid_target_angular_weight').value
         )
 
         self.goal_angle_gain = float(self.get_parameter('goal_angle_gain').value)
@@ -539,10 +547,17 @@ class GoalAwareNavNode(Node):
         ):
             linear_x = min(linear_x, self.min_linear_speed * 0.8)
 
-        if passage_mode and global_explore and abs(target_angle) > 0.5:
+        if passage_mode and has_target:
+            angular_z = self.passage_target_angular_weight * goal_angular
+        elif passage_mode and global_explore and abs(target_angle) > 0.5:
             angular_z = 0.85 * goal_angular
         elif passage_mode:
             angular_z = 0.0
+        elif danger_alpha > 0.7 and has_target:
+            angular_z = (
+                self.avoid_target_angular_weight * goal_angular +
+                (1.0 - self.avoid_target_angular_weight) * avoid_angular
+            )
         elif danger_alpha > 0.7:
             angular_z = avoid_angular
         elif has_target:
