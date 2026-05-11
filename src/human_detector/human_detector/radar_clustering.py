@@ -41,7 +41,7 @@ class RadarClustering:
     def cluster_points(self, points):
         """
         Cluster points using a simple radius-based connected-components pass.
-        Returns a list of cluster centers.
+        Returns a list of (center, point_count, spread) tuples.
         """
         if len(points) < self.min_points:
             return []
@@ -70,7 +70,9 @@ class RadarClustering:
 
             if len(cluster_indices) >= self.min_points:
                 cluster_points = points[list(cluster_indices)]
-                clusters.append(np.mean(cluster_points, axis=0))
+                center = np.mean(cluster_points, axis=0)
+                spread = float(np.max(np.linalg.norm(cluster_points[:, :2] - center[:2], axis=1)))
+                clusters.append((center, len(cluster_indices), spread))
 
         return clusters
     
@@ -95,11 +97,14 @@ class RadarClustering:
             # Fallback: expose the closest radar returns as a small candidate set.
             order = np.argsort(np.linalg.norm(points[:, :2], axis=1))
             fallback = points[order[:min(len(points), self.min_points)]]
-            return np.array(fallback).reshape(-1)
+            result = []
+            for point in fallback:
+                result.extend([point[0], point[1], point[2], 1.0, 0.0])
+            return np.array(result)
         
         # Flatten: [x1,y1,z1, x2,y2,z2, ...]
         result = []
-        for c in clusters:
-            result.extend([c[0], c[1], c[2]])
+        for center, count, spread in clusters:
+            result.extend([center[0], center[1], center[2], float(count), spread])
         
         return np.array(result)

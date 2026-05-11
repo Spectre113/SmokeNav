@@ -6,7 +6,7 @@ from sensor_msgs.msg import Image
 from std_msgs.msg import Float32MultiArray
 from visualization_msgs.msg import MarkerArray
 import cv2
-from cv_bridge import CvBridge
+import numpy as np
 
 from human_detector.thermal_processing import ThermalBoundingBoxDetector
 
@@ -38,7 +38,6 @@ class ThermalDetectionNode(Node):
         
         self.debug = self.get_parameter('debug').value
         self.camera_frame_id = self.get_parameter('camera_frame_id').value
-        self.bridge = CvBridge()
         
         # Subscribers
         self.create_subscription(Image, '/thermal/image_raw', self.callback, 10)
@@ -55,7 +54,7 @@ class ThermalDetectionNode(Node):
     def callback(self, msg: Image):
         """Process thermal image."""
         try:
-            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+            cv_image = self.image_to_array(msg)
             boxes, debug_image = self.detector.process_frame(cv_image, debug=self.debug)
             
             if boxes:
@@ -66,10 +65,20 @@ class ThermalDetectionNode(Node):
                 )
                 self.marker_pub.publish(markers)
                 
-                # Publish normalized positions
+                # Publish normalized boxes:
+                # [center_u, center_v, width, height, area] repeated.
                 centers = self.detector.get_centers(boxes)
                 pos_msg = Float32MultiArray()
-                pos_msg.data = [coord for c in centers for coord in (c[0]/msg.width, c[1]/msg.height)]
+                detections = []
+                for (x, y, w, h), center in zip(boxes, centers):
+                    detections.extend([
+                        center[0] / msg.width,
+                        center[1] / msg.height,
+                        w / msg.width,
+                        h / msg.height,
+                        (w * h) / float(msg.width * msg.height),
+                    ])
+                pos_msg.data = detections
                 self.position_pub.publish(pos_msg)
                 
                 self.get_logger().debug(f'Detected {len(boxes)} humans')
@@ -78,12 +87,46 @@ class ThermalDetectionNode(Node):
                 self.position_pub.publish(Float32MultiArray())
             
             if self.debug and debug_image is not None:
-                debug_msg = self.bridge.cv2_to_imgmsg(debug_image, encoding='bgr8')
-                debug_msg.header = msg.header
-                self.debug_pub.publish(debug_msg)
+                self.debug_pub.publish(self.array_to_bgr_image(debug_image, msg))
                 
         except Exception as e:
             self.get_logger().error(f'Error: {str(e)}')
+
+    def image_to_array(self, msg: Image) -> np.ndarray:
+        """Convert common Gazebo camera encodings without cv_bridge."""
+        encoding = (msg.encoding or '').lower()
+        if encoding in ('mono8', '8uc1', 'l8', 'passthrough', ''):
+            data = np.frombuffer(msg.data, dtype=np.uint8)
+            return data.reshape((msg.height, msg.step))[:, :msg.width]
+
+        if encoding in ('mono16', '16uc1'):
+            data = np.frombuffer(msg.data, dtype=np.uint16)
+            cols = msg.step // 2
+            return data.reshape((msg.height, cols))[:, :msg.width]
+
+        if encoding == '32fc1':
+            data = np.frombuffer(msg.data, dtype=np.float32)
+            cols = msg.step // 4
+            return data.reshape((msg.height, cols))[:, :msg.width]
+
+        if encoding in ('rgb8', 'bgr8'):
+            data = np.frombuffer(msg.data, dtype=np.uint8)
+            image = data.reshape((msg.height, msg.step // 3, 3))[:, :msg.width, :]
+            code = cv2.COLOR_RGB2GRAY if encoding == 'rgb8' else cv2.COLOR_BGR2GRAY
+            return cv2.cvtColor(image, code)
+
+        raise ValueError(f'Unsupported thermal image encoding: {msg.encoding}')
+
+    def array_to_bgr_image(self, image: np.ndarray, source: Image) -> Image:
+        out = Image()
+        out.header = source.header
+        out.height = int(image.shape[0])
+        out.width = int(image.shape[1])
+        out.encoding = 'bgr8'
+        out.is_bigendian = 0
+        out.step = out.width * 3
+        out.data = image.astype(np.uint8).tobytes()
+        return out
 
 
 def main(args=None):

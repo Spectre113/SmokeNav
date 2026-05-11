@@ -60,7 +60,8 @@ class RadarDetectionNode(Node):
             self.get_logger().debug('No clusters found')
         else:
             cluster_msg.data = cluster_centers.tolist()
-            num_clusters = len(cluster_centers) // 3
+            stride = 5 if len(cluster_centers) % 5 == 0 else 3
+            num_clusters = len(cluster_centers) // stride
             # Format with 2 decimal places
             formatted = [round(x, 2) for x in cluster_centers]
             self.get_logger().info(f'Published {num_clusters} clusters: {formatted}')
