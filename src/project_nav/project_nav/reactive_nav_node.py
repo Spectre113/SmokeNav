@@ -105,7 +105,9 @@ class ReactiveNavNode(Node):
 
     def distance_callback(self, msg: Float32MultiArray) -> None:
         if len(msg.data) != 3:
-            self.get_logger().warn('Invalid /sector_distances message. Expected [left, center, right]')
+            self.get_logger().warn(
+                'Invalid /sector_distances message. Expected [left, center, right]'
+            )
             return
 
         self.left_distance = self.sanitize_distance(msg.data[0])
@@ -137,7 +139,11 @@ class ReactiveNavNode(Node):
         if not self.has_fresh_data():
             return self.build_stop_cmd(), 'STOP_TIMEOUT'
 
-        if self.left_distance is None or self.center_distance is None or self.right_distance is None:
+        if (
+            self.left_distance is None or
+            self.center_distance is None or
+            self.right_distance is None
+        ):
             return self.build_stop_cmd(), 'STOP_NO_DISTANCES'
 
         left_score = self.left_distance
@@ -163,13 +169,19 @@ class ReactiveNavNode(Node):
             return self.build_forward_cmd(self.forward_speed_slow), 'GO_FORWARD_SLOW'
 
         if center_score > self.front_turn_distance:
-            if left_score > right_score + self.turn_margin and left_score > self.side_safe_distance:
+            if (
+                left_score > right_score + self.turn_margin and
+                left_score > self.side_safe_distance
+            ):
                 return self.build_arc_cmd(
                     linear_speed=self.forward_speed_turn,
                     angular_speed=self.turn_speed_moving
                 ), 'FORWARD_LEFT'
 
-            if right_score > left_score + self.turn_margin and right_score > self.side_safe_distance:
+            if (
+                right_score > left_score + self.turn_margin and
+                right_score > self.side_safe_distance
+            ):
                 return self.build_arc_cmd(
                     linear_speed=self.forward_speed_turn,
                     angular_speed=-self.turn_speed_moving
