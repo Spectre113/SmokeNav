@@ -1,5 +1,17 @@
 human_localization:
   ros__parameters:
-    match_distance: 1.0
+    # Mahalanobis distance gate. 3.0 ~= common 3-sigma association gate.
+    match_distance: 3.0
     min_hits: 3
     max_misses: 5
+
+    # Kalman tuning.
+    # Increase process_noise if a human can abruptly change direction/speed.
+    # Increase measurement_noise if /humans detections are jittery/noisy.
+    process_noise: 1.0
+    measurement_noise: 0.25
+    initial_position_variance: 1.0
+    initial_velocity_variance: 4.0
+
+    tracking_frame: base_link
+    target_frame: map
