@@ -67,6 +67,7 @@ class GoalAwareNavNode(Node):
         self.declare_parameter('free_topic', '/free_sectors')
         self.declare_parameter('distance_topic', '/sector_distances')
         self.declare_parameter('detailed_distance_topic', '/sector_distances_detailed')
+        self.declare_parameter('exploration_hint_topic', '/exploration_hint')
         self.declare_parameter('sensor_metrics_topic', '/sensor_fusion_metrics')
         self.declare_parameter('nav_metrics_topic', '/navigation_metrics')
         self.declare_parameter('smoke_density_topic', '/smoke/density')
@@ -76,6 +77,8 @@ class GoalAwareNavNode(Node):
         self.declare_parameter('detailed_sector_outer_angle_deg', 90.0)
         self.declare_parameter('exploration_turn_gain', 0.8)
         self.declare_parameter('exploration_center_bias', 0.35)
+        self.declare_parameter('use_global_exploration', True)
+        self.declare_parameter('exploration_hint_timeout', 2.0)
         self.declare_parameter('metrics_publish_rate', 1.0)
 
         self.declare_parameter('stuck_window_sec', 2.0)
@@ -163,6 +166,7 @@ class GoalAwareNavNode(Node):
         self.detailed_distance_topic = str(
             self.get_parameter('detailed_distance_topic').value
         )
+        self.exploration_hint_topic = str(self.get_parameter('exploration_hint_topic').value)
         self.sensor_metrics_topic = str(self.get_parameter('sensor_metrics_topic').value)
         self.nav_metrics_topic = str(self.get_parameter('nav_metrics_topic').value)
         self.smoke_density_topic = str(self.get_parameter('smoke_density_topic').value)
@@ -174,6 +178,12 @@ class GoalAwareNavNode(Node):
         )
         self.exploration_turn_gain = float(self.get_parameter('exploration_turn_gain').value)
         self.exploration_center_bias = float(self.get_parameter('exploration_center_bias').value)
+        self.use_global_exploration = bool(
+            self.get_parameter('use_global_exploration').value
+        )
+        self.exploration_hint_timeout = float(
+            self.get_parameter('exploration_hint_timeout').value
+        )
         self.metrics_publish_rate = float(self.get_parameter('metrics_publish_rate').value)
 
         self.stuck_window_sec = float(self.get_parameter('stuck_window_sec').value)
@@ -204,6 +214,12 @@ class GoalAwareNavNode(Node):
             Float32MultiArray,
             self.detailed_distance_topic,
             self.detailed_distance_callback,
+            10
+        )
+        self.exploration_hint_sub = self.create_subscription(
+            Float32MultiArray,
+            self.exploration_hint_topic,
+            self.exploration_hint_callback,
             10
         )
         self.sensor_metrics_sub = self.create_subscription(
@@ -240,6 +256,11 @@ class GoalAwareNavNode(Node):
         self.right_distance: Optional[float] = None
         self.detailed_distances: list[float] = []
         self.last_detailed_distance_time = None
+        self.exploration_hint_valid = False
+        self.exploration_hint_angle = 0.0
+        self.exploration_hint_distance = 0.0
+        self.exploration_hint_score = 0.0
+        self.last_exploration_hint_time = None
 
         self.target_detected = False
         self.target_angle = 0.0
@@ -306,6 +327,17 @@ class GoalAwareNavNode(Node):
 
         self.detailed_distances = [self.sanitize_distance(value) for value in msg.data]
         self.last_detailed_distance_time = self.get_clock().now()
+
+    def exploration_hint_callback(self, msg: Float32MultiArray) -> None:
+        if len(msg.data) < 4:
+            self.get_logger().warn('Invalid /exploration_hint message')
+            return
+
+        self.exploration_hint_valid = bool(msg.data[0] > 0.5)
+        self.exploration_hint_angle = float(msg.data[1])
+        self.exploration_hint_distance = self.sanitize_distance(msg.data[2])
+        self.exploration_hint_score = float(msg.data[3])
+        self.last_exploration_hint_time = self.get_clock().now()
 
     def sensor_metrics_callback(self, msg: String) -> None:
         try:
@@ -441,6 +473,7 @@ class GoalAwareNavNode(Node):
                 -self.max_angular_speed,
                 self.max_angular_speed
             )
+        global_explore = (not has_target) and self.has_fresh_exploration_hint()
 
         danger_alpha = self.compute_danger_alpha(center_score, left_score, right_score)
         passage_mode = self.is_passage_mode(center_score, left_score, right_score)
@@ -478,7 +511,17 @@ class GoalAwareNavNode(Node):
         ):
             linear_x = min(linear_x, self.min_linear_speed * self.align_linear_scale)
 
-        if passage_mode:
+        if (
+            not passage_mode and
+            global_explore and
+            abs(target_angle) > self.align_angle_threshold and
+            danger_alpha < 0.5
+        ):
+            linear_x = min(linear_x, self.min_linear_speed * 0.8)
+
+        if passage_mode and global_explore and abs(target_angle) > 0.5:
+            angular_z = 0.85 * goal_angular
+        elif passage_mode:
             angular_z = 0.0
         elif danger_alpha > 0.7:
             angular_z = avoid_angular
@@ -723,6 +766,13 @@ class GoalAwareNavNode(Node):
         return avoid
 
     def get_exploration_angle(self) -> float:
+        if self.has_fresh_exploration_hint():
+            return self.clamp(
+                self.exploration_hint_angle,
+                -self.max_angular_speed * 2.5,
+                self.max_angular_speed * 2.5,
+            )
+
         if self.has_fresh_detailed_obstacle_data() and self.detailed_distances:
             return self.best_detailed_sector_angle()
 
@@ -737,6 +787,16 @@ class GoalAwareNavNode(Node):
             return 0.0
 
         return 0.7 if self.left_distance >= self.right_distance else -0.7
+
+    def has_fresh_exploration_hint(self) -> bool:
+        if not self.use_global_exploration:
+            return False
+        if not self.exploration_hint_valid or self.last_exploration_hint_time is None:
+            return False
+        dt_hint = (
+            self.get_clock().now() - self.last_exploration_hint_time
+        ).nanoseconds / 1e9
+        return dt_hint <= self.exploration_hint_timeout
 
     def best_detailed_sector_angle(self) -> float:
         distances = self.detailed_distances
@@ -1007,6 +1067,9 @@ class GoalAwareNavNode(Node):
             'smoke_density': self.latest_smoke_density,
             'target_detected': self.target_detected,
             'target_confidence': self.target_confidence,
+            'exploration_hint_valid': self.has_fresh_exploration_hint(),
+            'exploration_hint_angle': self.exploration_hint_angle,
+            'exploration_hint_distance': self.exploration_hint_distance,
             'cmd_linear_x': cmd.linear.x,
             'cmd_angular_z': cmd.angular.z,
         }
