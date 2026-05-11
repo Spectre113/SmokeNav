@@ -37,7 +37,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "scan_topic": "/scan_smoked",
-            "radar_topic": "/radar/points",
+            "radar_topic": "/radar/environment_points",
             "depth_points_topic": "/camera/depth/color/points",
             "ultrasonic_topic": "/ultrasonic/front",
             "require_target": "false",
@@ -48,9 +48,9 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
                 [
-                    FindPackageShare("project_detection"),
+                    FindPackageShare("human_detector"),
                     "launch",
-                    "detection_from_gazebo.launch.py",
+                    "human_detector.launch.py",
                 ]
             )
         )

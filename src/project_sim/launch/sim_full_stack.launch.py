@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -12,11 +12,25 @@ def generate_launch_description():
         default_value='0.0',
         description='Smoke density in [0..1].',
     )
+    enable_rendering_sensors_arg = DeclareLaunchArgument(
+        'enable_rendering_sensors',
+        default_value='false',
+        description='Enable Gazebo rendering sensors such as depth and thermal cameras.',
+    )
+    startup_delay_arg = DeclareLaunchArgument(
+        'startup_delay_sec',
+        default_value='6.0',
+        description='Delay non-simulation nodes until the robot is spawned in Gazebo.',
+    )
 
     sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare('project_sim'), 'launch', 'sim_bringup.launch.py'])
-        )
+        ),
+        launch_arguments={
+            'enable_rendering_sensors': LaunchConfiguration('enable_rendering_sensors'),
+            'enable_human_breathing': 'true',
+        }.items(),
     )
 
     smoke = IncludeLaunchDescription(
@@ -26,9 +40,9 @@ def generate_launch_description():
         launch_arguments={'density': LaunchConfiguration('density')}.items(),
     )
 
-    detection = IncludeLaunchDescription(
+    human_detection = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            PathJoinSubstitution([FindPackageShare('project_detection'), 'launch', 'detection_from_gazebo.launch.py'])
+            PathJoinSubstitution([FindPackageShare('human_detector'), 'launch', 'human_detector.launch.py'])
         )
     )
 
@@ -53,12 +67,12 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': True,
             'scan_topic': '/scan_smoked',
-            'radar_topic': '/radar/points',
+            'radar_topic': '/radar/environment_points',
             'depth_points_topic': '/camera/depth/color/points',
             'ultrasonic_topic': '/ultrasonic/front',
             'enable_lidar': True,
             'enable_radar': True,
-            'enable_depth_camera': True,
+            'enable_depth_camera': False,
             'enable_ultrasonic': True,
             'base_frame': 'base_link',
             'enable_tf_transform': True,
@@ -115,6 +129,7 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': True,
             'require_target': False,
+            'target_confidence_threshold': 0.30,
             'use_target_memory': True,
             'target_memory_timeout': 2.0,
             'target_hint_stop_distance': 0.8,
@@ -140,13 +155,22 @@ def generate_launch_description():
         }],
     )
 
+    delayed_stack = TimerAction(
+        period=LaunchConfiguration('startup_delay_sec'),
+        actions=[
+            human_detection,
+            localization,
+            adapter,
+            sector_analyzer,
+            goal_nav,
+        ],
+    )
+
     return LaunchDescription([
         density_arg,
+        enable_rendering_sensors_arg,
+        startup_delay_arg,
         sim,
         smoke,
-        detection,
-        localization,
-        adapter,
-        sector_analyzer,
-        goal_nav,
+        delayed_stack,
     ])

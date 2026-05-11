@@ -13,7 +13,7 @@ def generate_launch_description():
     )
     radar_topic_arg = DeclareLaunchArgument(
         "radar_topic",
-        default_value="/radar/points",
+        default_value="/radar/environment_points",
         description="PointCloud2 radar topic to use for navigation if available.",
     )
     depth_points_topic_arg = DeclareLaunchArgument(

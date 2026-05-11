@@ -42,7 +42,7 @@ class SectorAnalyzerNode(Node):
         super().__init__('sector_analyzer_node')
 
         self.declare_parameter('scan_topic', '/scan')
-        self.declare_parameter('radar_topic', '/radar/points')
+        self.declare_parameter('radar_topic', '/radar/environment_points')
         self.declare_parameter('depth_points_topic', '/camera/depth/color/points')
         self.declare_parameter('ultrasonic_topic', '/ultrasonic/front')
         self.declare_parameter('output_topic', '/free_sectors')

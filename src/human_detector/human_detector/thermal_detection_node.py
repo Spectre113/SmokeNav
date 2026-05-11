@@ -25,7 +25,7 @@ class ThermalDetectionNode(Node):
         self.declare_parameter('min_aspect_ratio', 0.1)
         self.declare_parameter('max_aspect_ratio', 10.0)
         self.declare_parameter('debug', False)
-        self.declare_parameter('camera_frame_id', 'thermal_camera_frame')
+        self.declare_parameter('camera_frame_id', 'thermal_optical_frame')
         
         self.detector = ThermalBoundingBoxDetector(
             temp_min=self.get_parameter('temp_min').value,
@@ -106,7 +106,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

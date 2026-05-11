@@ -22,13 +22,12 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
                 [
-                    FindPackageShare("project_detection"),
+                    FindPackageShare("human_detector"),
                     "launch",
-                    "detection_from_gazebo.launch.py",
+                    "human_detector.launch.py",
                 ]
             )
         )
     )
 
     return LaunchDescription([sim_and_nav, detection])
-

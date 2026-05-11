@@ -35,5 +35,10 @@ setup(
     description="Gazebo Classic simulation bringup for SmokeNav",
     license="TODO: License declaration",
     extras_require={"test": ["pytest"]},
+    entry_points={
+        "console_scripts": [
+            "human_breathing_node = project_sim.human_breathing_node:main",
+            "simulated_mmwave_radar_node = project_sim.simulated_mmwave_radar_node:main",
+        ],
+    },
 )
-

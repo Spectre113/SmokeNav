@@ -11,6 +11,7 @@
   <depend>cv_bridge</depend>
   <depend>pcl_ros</depend>
   <depend>sensor_msgs</depend>
+  <depend>sensor_msgs_py</depend>
   <depend>std_msgs</depend>
   <depend>python3-sklearn</depend>
   <depend>python3-numpy</depend>

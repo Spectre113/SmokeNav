@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (
     Command,
@@ -29,6 +30,11 @@ def generate_launch_description():
         default_value=default_xacro,
         description="Path to the robot URDF Xacro file.",
     )
+    enable_rendering_sensors_arg = DeclareLaunchArgument(
+        "enable_rendering_sensors",
+        default_value="false",
+        description="Enable Gazebo rendering sensors such as depth and thermal cameras.",
+    )
     robot_name_arg = DeclareLaunchArgument(
         "robot_name",
         default_value="smokenav_robot",
@@ -38,6 +44,11 @@ def generate_launch_description():
         "use_sim_time",
         default_value="true",
         description="Use simulation clock if true.",
+    )
+    enable_human_breathing_arg = DeclareLaunchArgument(
+        "enable_human_breathing",
+        default_value="true",
+        description="Enable micro-oscillation for human_0 so mmWave can detect breathing motion.",
     )
 
     gazebo = IncludeLaunchDescription(
@@ -57,7 +68,14 @@ def generate_launch_description():
             {"use_sim_time": LaunchConfiguration("use_sim_time")},
             {
                 "robot_description": Command(
-                    [FindExecutable(name="xacro"), " ", LaunchConfiguration("xacro_file")]
+                    [
+                        FindExecutable(name="xacro"),
+                        " ",
+                        LaunchConfiguration("xacro_file"),
+                        " ",
+                        "enable_rendering_sensors:=",
+                        LaunchConfiguration("enable_rendering_sensors"),
+                    ]
                 )
             },
         ],
@@ -89,16 +107,41 @@ def generate_launch_description():
         parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
     )
 
+    simulated_mmwave_radar = Node(
+        package="project_sim",
+        executable="simulated_mmwave_radar_node",
+        name="simulated_mmwave_radar_node",
+        output="screen",
+        parameters=[
+            {"use_sim_time": LaunchConfiguration("use_sim_time")},
+            {"robot_model_name": LaunchConfiguration("robot_name")},
+        ],
+    )
+
+    human_breathing = Node(
+        package="project_sim",
+        executable="human_breathing_node",
+        name="human_breathing_node",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_human_breathing")),
+        parameters=[
+            {"use_sim_time": LaunchConfiguration("use_sim_time")},
+        ],
+    )
+
     return LaunchDescription(
         [
             world_arg,
             xacro_arg,
+            enable_rendering_sensors_arg,
             robot_name_arg,
             use_sim_time_arg,
+            enable_human_breathing_arg,
             gazebo,
             robot_state_publisher,
             spawn_entity,
             map_to_odom,
+            simulated_mmwave_radar,
+            human_breathing,
         ]
     )
-
