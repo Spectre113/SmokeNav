@@ -2908,6 +2908,7 @@
           <pose>0 0 0.85 0 0 0</pose>
         </collision>
         <visual name="visual">
+          <cast_shadows>1</cast_shadows>
           <geometry>
             <cylinder>
               <radius>0.18</radius>
@@ -2916,10 +2917,10 @@
           </geometry>
           <pose>0 0 0.85 0 0 0</pose>
           <material>
-            <script>
-              <uri>file://media/materials/scripts/gazebo.material</uri>
-              <name>Gazebo/Red</name>
-            </script>
+            <ambient>1.0 0.0 0.0 1.0</ambient>
+            <diffuse>1.0 0.2 0.2 1.0</diffuse>
+            <specular>0.5 0.5 0.5 1.0</specular>
+            <emissive>0.0 0.0 0.0 1.0</emissive>
           </material>
         </visual>
       </link>

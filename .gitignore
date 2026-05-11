@@ -86,3 +86,8 @@ mmwave_dataset_publisher
 # =========================
 *.orig
 *.state
+
+.roslog/
+logs/
+
+temp.txt

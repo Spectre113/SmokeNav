@@ -79,7 +79,7 @@ class HumanPoseAdapterNode(Node):
                             f'Restore target: moved away (dist={distance:.2f} >= {self.reappear_distance:.2f})'
                         )
 
-                target_visible = self.latest_detected and (not self.target_hidden_close)
+                target_visible = (self.latest_detected or self.latest_conf > 0.35) and (not self.target_hidden_close)
                 detected = 1.0 if target_visible else 0.0
 
         out.data = [detected, angle, distance, self.latest_conf]
