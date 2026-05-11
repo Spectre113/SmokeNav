@@ -55,6 +55,11 @@ def generate_launch_description():
                 'heartbeat_match_distance': 0.90,
                 'heartbeat_min_score': 0.08,
                 'heartbeat_weight': 0.55,
+                'use_heartbeat_fallback': ParameterValue(
+                    LaunchConfiguration('require_heartbeat'),
+                    value_type=bool,
+                ),
+                'heartbeat_fallback_confidence': 0.85,
                 'depth_points_topic': '/camera/depth/color/points',
                 'smoke_density_topic': '/smoke/density',
                 'humans_topic': '/humans',
