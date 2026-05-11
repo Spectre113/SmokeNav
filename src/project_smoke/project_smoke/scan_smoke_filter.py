@@ -7,6 +7,7 @@ import rclpy
 from rclpy.node import Node
 
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Float32
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -21,18 +22,22 @@ class ScanSmokeFilter(Node):
         self.declare_parameter("seed", 42)
         self.declare_parameter("input_topic", "/scan")
         self.declare_parameter("output_topic", "/scan_smoked")
+        self.declare_parameter("density_topic", "/smoke/density")
 
         self._rng = random.Random(int(self.get_parameter("seed").value))
 
         input_topic = str(self.get_parameter("input_topic").value)
         output_topic = str(self.get_parameter("output_topic").value)
+        density_topic = str(self.get_parameter("density_topic").value)
 
         self._pub = self.create_publisher(LaserScan, output_topic, 10)
+        self._density_pub = self.create_publisher(Float32, density_topic, 10)
         self._sub = self.create_subscription(LaserScan, input_topic, self._on_scan, 10)
 
     def _on_scan(self, msg: LaserScan) -> None:
         density = float(self.get_parameter("density").value)
         density = _clamp(density, 0.0, 1.0)
+        self._density_pub.publish(Float32(data=density))
 
         # Tuned for "noticeable but not catastrophic" degradation.
         max_range_scale = 1.0 - 0.6 * density
@@ -81,4 +86,3 @@ def main() -> None:
     finally:
         node.destroy_node()
         rclpy.shutdown()
-

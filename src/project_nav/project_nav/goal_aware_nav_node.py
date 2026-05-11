@@ -1,3 +1,4 @@
+import json
 import math
 from collections import deque
 from typing import Optional
@@ -7,7 +8,7 @@ from rclpy.node import Node
 
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
-from std_msgs.msg import Int32MultiArray, Float32MultiArray
+from std_msgs.msg import Float32, Int32MultiArray, Float32MultiArray, String
 from rclpy.duration import Duration
 
 
@@ -65,9 +66,17 @@ class GoalAwareNavNode(Node):
 
         self.declare_parameter('free_topic', '/free_sectors')
         self.declare_parameter('distance_topic', '/sector_distances')
+        self.declare_parameter('detailed_distance_topic', '/sector_distances_detailed')
+        self.declare_parameter('sensor_metrics_topic', '/sensor_fusion_metrics')
+        self.declare_parameter('nav_metrics_topic', '/navigation_metrics')
+        self.declare_parameter('smoke_density_topic', '/smoke/density')
         self.declare_parameter('target_topic', '/target_info')
         self.declare_parameter('cmd_topic', '/cmd_vel')
         self.declare_parameter('odom_topic', '/odom')
+        self.declare_parameter('detailed_sector_outer_angle_deg', 90.0)
+        self.declare_parameter('exploration_turn_gain', 0.8)
+        self.declare_parameter('exploration_center_bias', 0.35)
+        self.declare_parameter('metrics_publish_rate', 1.0)
 
         self.declare_parameter('stuck_window_sec', 2.0)
         self.declare_parameter('stuck_min_progress_m', 0.05)
@@ -151,9 +160,21 @@ class GoalAwareNavNode(Node):
 
         self.free_topic = str(self.get_parameter('free_topic').value)
         self.distance_topic = str(self.get_parameter('distance_topic').value)
+        self.detailed_distance_topic = str(
+            self.get_parameter('detailed_distance_topic').value
+        )
+        self.sensor_metrics_topic = str(self.get_parameter('sensor_metrics_topic').value)
+        self.nav_metrics_topic = str(self.get_parameter('nav_metrics_topic').value)
+        self.smoke_density_topic = str(self.get_parameter('smoke_density_topic').value)
         self.target_topic = str(self.get_parameter('target_topic').value)
         self.cmd_topic = str(self.get_parameter('cmd_topic').value)
         self.odom_topic = str(self.get_parameter('odom_topic').value)
+        self.detailed_sector_outer_angle_deg = float(
+            self.get_parameter('detailed_sector_outer_angle_deg').value
+        )
+        self.exploration_turn_gain = float(self.get_parameter('exploration_turn_gain').value)
+        self.exploration_center_bias = float(self.get_parameter('exploration_center_bias').value)
+        self.metrics_publish_rate = float(self.get_parameter('metrics_publish_rate').value)
 
         self.stuck_window_sec = float(self.get_parameter('stuck_window_sec').value)
         self.stuck_min_progress_m = float(self.get_parameter('stuck_min_progress_m').value)
@@ -165,6 +186,7 @@ class GoalAwareNavNode(Node):
         self.recovery_duration_sec = float(self.get_parameter('recovery_duration_sec').value)
 
         self.cmd_pub = self.create_publisher(Twist, self.cmd_topic, 10)
+        self.metrics_pub = self.create_publisher(String, self.nav_metrics_topic, 10)
 
         self.free_sub = self.create_subscription(
             Int32MultiArray,
@@ -176,6 +198,24 @@ class GoalAwareNavNode(Node):
             Float32MultiArray,
             self.distance_topic,
             self.distance_callback,
+            10
+        )
+        self.detailed_distance_sub = self.create_subscription(
+            Float32MultiArray,
+            self.detailed_distance_topic,
+            self.detailed_distance_callback,
+            10
+        )
+        self.sensor_metrics_sub = self.create_subscription(
+            String,
+            self.sensor_metrics_topic,
+            self.sensor_metrics_callback,
+            10
+        )
+        self.smoke_density_sub = self.create_subscription(
+            Float32,
+            self.smoke_density_topic,
+            self.smoke_density_callback,
             10
         )
         self.target_sub = self.create_subscription(
@@ -198,6 +238,8 @@ class GoalAwareNavNode(Node):
         self.left_distance: Optional[float] = None
         self.center_distance: Optional[float] = None
         self.right_distance: Optional[float] = None
+        self.detailed_distances: list[float] = []
+        self.last_detailed_distance_time = None
 
         self.target_detected = False
         self.target_angle = 0.0
@@ -212,12 +254,24 @@ class GoalAwareNavNode(Node):
         self.last_distance_time = None
         self.last_target_time = None
         self.odom_history = deque(maxlen=400)
+        self.last_odom_pose: Optional[tuple[float, float]] = None
 
         self.recovery_active = False
         self.recovery_until = None
         self.recovery_turn_sign = 1.0
 
         self.last_decision: Optional[str] = None
+        self.last_metrics_time = None
+        self.path_length_m = 0.0
+        self.stuck_events = 0
+        self.target_reached_events = 0
+        self.collision_risk_events = 0
+        self.collision_risk_active = False
+        self.min_clearance_seen = float('inf')
+        self.latest_sensor_min_clearance: Optional[float] = None
+        self.latest_smoke_density: Optional[float] = None
+        self.target_session_start = None
+        self.last_time_to_target_sec: Optional[float] = None
 
         self.timer = self.create_timer(1.0 / self.control_rate, self.control_loop)
 
@@ -245,6 +299,31 @@ class GoalAwareNavNode(Node):
         self.right_distance = self.sanitize_distance(msg.data[2])
         self.last_distance_time = self.get_clock().now()
 
+    def detailed_distance_callback(self, msg: Float32MultiArray) -> None:
+        if len(msg.data) < 3:
+            self.get_logger().warn('Invalid /sector_distances_detailed message')
+            return
+
+        self.detailed_distances = [self.sanitize_distance(value) for value in msg.data]
+        self.last_detailed_distance_time = self.get_clock().now()
+
+    def sensor_metrics_callback(self, msg: String) -> None:
+        try:
+            data = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+
+        min_clearance = data.get('min_clearance_m')
+        if isinstance(min_clearance, (int, float)) and math.isfinite(min_clearance):
+            self.latest_sensor_min_clearance = float(min_clearance)
+
+        smoke_density = data.get('smoke_density')
+        if isinstance(smoke_density, (int, float)) and math.isfinite(smoke_density):
+            self.latest_smoke_density = float(smoke_density)
+
+    def smoke_density_callback(self, msg: Float32) -> None:
+        self.latest_smoke_density = float(msg.data)
+
     def target_callback(self, msg: Float32MultiArray) -> None:
         if len(msg.data) != 4:
             self.get_logger().warn('Invalid /target_info message')
@@ -257,6 +336,8 @@ class GoalAwareNavNode(Node):
         self.last_target_time = self.get_clock().now()
 
         if self.is_current_target_valid():
+            if self.last_valid_target_time is None:
+                self.target_session_start = self.get_clock().now()
             self.last_valid_target_time = self.last_target_time
             self.last_valid_target_angle = self.target_angle
             self.last_valid_target_distance = self.target_distance
@@ -267,6 +348,14 @@ class GoalAwareNavNode(Node):
         x = float(msg.pose.pose.position.x)
         y = float(msg.pose.pose.position.y)
         self.odom_history.append((stamp_sec, x, y))
+
+        if self.last_odom_pose is not None:
+            dx = x - self.last_odom_pose[0]
+            dy = y - self.last_odom_pose[1]
+            step = math.hypot(dx, dy)
+            if step < 1.0:
+                self.path_length_m += step
+        self.last_odom_pose = (x, y)
 
         # Keep about 3x window history only.
         keep_sec = max(3.0 * self.stuck_window_sec, 3.0)
@@ -284,6 +373,8 @@ class GoalAwareNavNode(Node):
     def control_loop(self) -> None:
         cmd, decision = self.compute_command()
         self.cmd_pub.publish(cmd)
+        self.update_runtime_metrics(decision)
+        self.publish_runtime_metrics(decision, cmd)
 
         if decision != self.last_decision:
             self.get_logger().info(
@@ -342,10 +433,14 @@ class GoalAwareNavNode(Node):
                 self.max_angular_speed
             )
         else:
-            target_angle = 0.0
-            target_mode = 'none'
+            target_angle = self.get_exploration_angle()
+            target_mode = 'explore'
             goal_linear = self.search_linear_speed
-            goal_angular = 0.0
+            goal_angular = self.clamp(
+                self.exploration_turn_gain * target_angle,
+                -self.max_angular_speed,
+                self.max_angular_speed
+            )
 
         danger_alpha = self.compute_danger_alpha(center_score, left_score, right_score)
         passage_mode = self.is_passage_mode(center_score, left_score, right_score)
@@ -393,7 +488,10 @@ class GoalAwareNavNode(Node):
                 danger_alpha * avoid_angular
             )
         else:
-            angular_z = danger_alpha * avoid_angular
+            angular_z = (
+                (1.0 - danger_alpha) * goal_angular +
+                danger_alpha * avoid_angular
+            )
 
         # Corridor centering to avoid wall-hugging in room transitions.
         if center_score > self.front_blocked_distance:
@@ -624,6 +722,52 @@ class GoalAwareNavNode(Node):
 
         return avoid
 
+    def get_exploration_angle(self) -> float:
+        if self.has_fresh_detailed_obstacle_data() and self.detailed_distances:
+            return self.best_detailed_sector_angle()
+
+        if (
+            self.left_distance is None or
+            self.center_distance is None or
+            self.right_distance is None
+        ):
+            return 0.0
+
+        if self.center_distance > self.front_safe_distance:
+            return 0.0
+
+        return 0.7 if self.left_distance >= self.right_distance else -0.7
+
+    def best_detailed_sector_angle(self) -> float:
+        distances = self.detailed_distances
+        if not distances:
+            return 0.0
+
+        count = len(distances)
+        side_outer = math.radians(self.detailed_sector_outer_angle_deg)
+        best_index = count // 2
+        best_score = -float('inf')
+
+        for index, distance in enumerate(distances):
+            angle = self.detailed_sector_angle(index, count, side_outer)
+            if distance <= self.front_blocked_distance:
+                score = -10.0 + distance
+            else:
+                turn_penalty = self.exploration_center_bias * abs(angle) / max(side_outer, 1e-6)
+                score = min(distance, self.side_score_cap) - turn_penalty
+
+            if score > best_score:
+                best_score = score
+                best_index = index
+
+        return self.detailed_sector_angle(best_index, count, side_outer)
+
+    def detailed_sector_angle(self, index: int, count: int, side_outer: float) -> float:
+        if count <= 1:
+            return 0.0
+        ratio = index / float(count - 1)
+        return -side_outer + ratio * 2.0 * side_outer
+
     def compute_centerline_angular(self, left_score: float, right_score: float) -> float:
         denom = max(left_score + right_score, 1e-6)
         imbalance = (left_score - right_score) / denom
@@ -715,6 +859,7 @@ class GoalAwareNavNode(Node):
     def start_recovery(self, left_score: float, right_score: float) -> None:
         self.recovery_turn_sign = -1.0 if left_score < right_score else 1.0
         self.recovery_active = True
+        self.stuck_events += 1
         self.recovery_until = (
             self.get_clock().now() +
             Duration(seconds=self.recovery_duration_sec)
@@ -741,6 +886,14 @@ class GoalAwareNavNode(Node):
             dt_free <= self.perception_timeout and
             dt_dist <= self.perception_timeout
         )
+
+    def has_fresh_detailed_obstacle_data(self) -> bool:
+        if self.last_detailed_distance_time is None:
+            return False
+        dt_detailed = (
+            self.get_clock().now() - self.last_detailed_distance_time
+        ).nanoseconds / 1e9
+        return dt_detailed <= self.perception_timeout
 
     def has_fresh_target_data(self, timeout: float) -> bool:
         if self.last_target_time is None:
@@ -791,6 +944,76 @@ class GoalAwareNavNode(Node):
             dt_memory <= self.target_memory_timeout and
             0.0 < self.last_valid_target_distance <= self.target_stop_distance
         )
+
+    def update_runtime_metrics(self, decision: str) -> None:
+        clearances = [
+            value for value in (
+                self.left_distance,
+                self.center_distance,
+                self.right_distance,
+                self.latest_sensor_min_clearance,
+            )
+            if value is not None and value > 0.0 and math.isfinite(value)
+        ]
+        if clearances:
+            current_min = min(clearances)
+            self.min_clearance_seen = min(self.min_clearance_seen, current_min)
+        else:
+            current_min = None
+
+        risk_now = bool(
+            current_min is not None and
+            (
+                current_min <= self.wall_stop_distance or
+                (
+                    self.center_distance is not None and
+                    self.center_distance <= self.front_blocked_distance * 0.8
+                )
+            )
+        )
+        if risk_now and not self.collision_risk_active:
+            self.collision_risk_events += 1
+        self.collision_risk_active = risk_now
+
+        if decision == 'STOP_TARGET_REACHED' and self.last_decision != 'STOP_TARGET_REACHED':
+            self.target_reached_events += 1
+            if self.target_session_start is not None:
+                elapsed = (self.get_clock().now() - self.target_session_start).nanoseconds / 1e9
+                self.last_time_to_target_sec = elapsed
+            self.target_session_start = None
+            self.last_valid_target_time = None
+
+    def publish_runtime_metrics(self, decision: str, cmd: Twist) -> None:
+        now = self.get_clock().now()
+        if self.last_metrics_time is not None:
+            dt = (now - self.last_metrics_time).nanoseconds / 1e9
+            if dt < 1.0 / max(self.metrics_publish_rate, 1e-6):
+                return
+        self.last_metrics_time = now
+
+        min_clearance = None
+        if math.isfinite(self.min_clearance_seen):
+            min_clearance = self.min_clearance_seen
+
+        metrics = {
+            'decision': decision,
+            'path_length_m': self.path_length_m,
+            'stuck_events': self.stuck_events,
+            'target_reached_events': self.target_reached_events,
+            'last_time_to_target_sec': self.last_time_to_target_sec,
+            'collision_risk_events': self.collision_risk_events,
+            'min_clearance_seen_m': min_clearance,
+            'sensor_min_clearance_m': self.latest_sensor_min_clearance,
+            'smoke_density': self.latest_smoke_density,
+            'target_detected': self.target_detected,
+            'target_confidence': self.target_confidence,
+            'cmd_linear_x': cmd.linear.x,
+            'cmd_angular_z': cmd.angular.z,
+        }
+
+        msg = String()
+        msg.data = json.dumps(metrics, separators=(',', ':'))
+        self.metrics_pub.publish(msg)
 
     def build_stop_cmd(self) -> Twist:
         return self.build_cmd(0.0, 0.0)
