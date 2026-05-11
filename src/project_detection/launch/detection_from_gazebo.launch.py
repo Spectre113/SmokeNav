@@ -12,7 +12,25 @@ def generate_launch_description():
             PathJoinSubstitution(
                 [FindPackageShare('human_detector'), 'launch', 'human_detection_launch.launch.py']
             )
-        )
+        ),
+        launch_arguments={
+            'require_heartbeat': 'true',
+            'heartbeat_topic': '/human_heartbeat',
+        }.items(),
+    )
+
+    heartbeat = Node(
+        package="project_detection",
+        executable="sim_human_heartbeat",
+        name="sim_human_heartbeat",
+        output="screen",
+        parameters=[
+            {"use_sim_time": True},
+            {"model_name_prefix": "human_"},
+            {"heartbeat_topic": "/human_heartbeat"},
+            {"base_frame": "base_link"},
+            {"world_frame": "map"},
+        ],
     )
 
     target_marker = Node(
@@ -32,4 +50,4 @@ def generate_launch_description():
         ],
     )
 
-    return LaunchDescription([human_detection, target_marker])
+    return LaunchDescription([heartbeat, human_detection, target_marker])

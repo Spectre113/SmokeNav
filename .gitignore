@@ -89,5 +89,6 @@ mmwave_dataset_publisher
 
 .roslog/
 logs/
+.gazebo_log
 
 temp.txt

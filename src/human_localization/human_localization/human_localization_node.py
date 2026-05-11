@@ -44,7 +44,14 @@ class HumanLocalizationNode(Node):
         self.get_logger().info('Localization node started')
 
     def callback(self, msg: PoseArray):
-        detections = [(p.position.x, p.position.y) for p in msg.poses]
+        detections = [
+            (
+                p.position.x,
+                p.position.y,
+                max(0.0, min(1.0, p.orientation.w if p.orientation.w > 0.0 else 0.5)),
+            )
+            for p in msg.poses
+        ]
 
         tracks = self.tracker.update(detections, msg.header.stamp)
         if not tracks:
