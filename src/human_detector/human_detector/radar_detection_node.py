@@ -26,10 +26,10 @@ class RadarDetectionNode(Node):
         # Initialize clustering module
         self.clustering = RadarClustering(epsilon=epsilon, min_points=min_points)
         
-        # Subscriber: radar point cloud from dataset/simulation
+        # Subscriber: radar point cloud from SIMULATION (not dataset)
         self.subscription = self.create_subscription(
             PointCloud2,
-            '/radar/pointcloud',
+            '/radar/points',
             self.radar_callback,
             10
         )
@@ -41,6 +41,13 @@ class RadarDetectionNode(Node):
             10
         )
         
+        # Publisher: cluster metadata for fusion node
+        self.metadata_pub = self.create_publisher(
+            Float32MultiArray,
+            '/radar/cluster_metadata',
+            10
+        )
+        
         self.get_logger().info('Radar Detection Node started')
         self.get_logger().info(f'Parameters: epsilon={epsilon}, min_points={min_points}')
     
@@ -49,10 +56,10 @@ class RadarDetectionNode(Node):
         Called whenever radar point cloud arrives.
         Processes point cloud and publishes cluster centers.
         """
-        # Process the point cloud
-        cluster_centers = self.clustering.process(msg)
+        # Process the point cloud — now returns (centers, metadata)
+        cluster_centers, metadata = self.clustering.process(msg)
         
-        # Create and publish message
+        # Publish cluster centers
         cluster_msg = Float32MultiArray()
         
         if len(cluster_centers) == 0:
@@ -61,11 +68,21 @@ class RadarDetectionNode(Node):
         else:
             cluster_msg.data = cluster_centers.tolist()
             num_clusters = len(cluster_centers) // 3
-            # Format with 2 decimal places
             formatted = [round(x, 2) for x in cluster_centers]
             self.get_logger().info(f'Published {num_clusters} clusters: {formatted}')
         
         self.publisher.publish(cluster_msg)
+        
+        # Publish metadata for fusion node
+        if len(metadata) > 0:
+            meta_msg = Float32MultiArray()
+            for m in metadata:
+                meta_msg.data.extend([float(m['num_points']), float(m['cluster_radius'])])
+            self.metadata_pub.publish(meta_msg)
+        else:
+            # Publish empty to clear old metadata
+            self.metadata_pub.publish(Float32MultiArray())
+
 
 def main(args=None):
     rclpy.init(args=args)
@@ -77,6 +94,7 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

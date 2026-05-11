@@ -77,25 +77,54 @@ class RadarClustering:
         return clusters
     
     def process(self, msg):
-        """
-        Full pipeline: convert -> cluster
-        Returns array of cluster centers.
+        """Full pipeline: convert -> cluster.
+        Returns: (centers_flat, metadata_list)
+            centers_flat: [x1,y1,z1, x2,y2,z2, ...]
+            metadata_list: [{'num_points': N, 'cluster_radius': R}, ...]
         """
         points = self.pointcloud2_to_xyz_array(msg)
         
         if len(points) == 0:
-            return np.array([])
+            return np.array([]), []
         
-        points = points[np.linalg.norm(points[:, :2], axis=1) <= self.max_range]
-
-        clusters = self.cluster_points(points)
+        # Filter by max range
+        distances = np.linalg.norm(points[:, :2], axis=1)
+        points = points[distances <= self.max_range]
         
-        if len(clusters) == 0:
-            return np.array([])
+        if len(points) < self.min_points:
+            return np.array([]), []
         
-        # Flatten: [x1,y1,z1, x2,y2,z2, ...]
+        clustering = DBSCAN(eps=self.epsilon, min_samples=self.min_points).fit(points)
+        labels = clustering.labels_
+        
+        unique_labels = set(labels)
+        clusters = []
+        metadata = []
+        
+        for label in unique_labels:
+            if label == -1:
+                continue
+            
+            cluster_points = points[labels == label]
+            
+            if len(cluster_points) < self.min_points:
+                continue
+            
+            center = np.mean(cluster_points, axis=0)
+            clusters.append(center)
+            
+            # Calculate cluster radius (max distance from center)
+            distances_from_center = np.linalg.norm(cluster_points - center, axis=1)
+            radius = float(np.max(distances_from_center)) if len(distances_from_center) > 0 else 0.0
+            
+            metadata.append({
+                'num_points': len(cluster_points),
+                'cluster_radius': radius
+            })
+        
+        # Flatten centers
         result = []
         for c in clusters:
-            result.extend([c[0], c[1], c[2]])
+            result.extend([float(c[0]), float(c[1]), float(c[2])])
         
-        return np.array(result)
+        return np.array(result), metadata

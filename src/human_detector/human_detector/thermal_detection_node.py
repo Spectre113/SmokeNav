@@ -18,8 +18,8 @@ class ThermalDetectionNode(Node):
         super().__init__('thermal_detection_node')
         
         # Parameters
-        self.declare_parameter('temp_min', 30.0)
-        self.declare_parameter('temp_max', 37.5)
+        self.declare_parameter('temp_min', 34.0)
+        self.declare_parameter('temp_max', 40.5)
         self.declare_parameter('min_area', 100)
         self.declare_parameter('max_area', 5000)
         self.declare_parameter('min_aspect_ratio', 0.3)
@@ -46,6 +46,7 @@ class ThermalDetectionNode(Node):
         # Publishers
         self.marker_pub = self.create_publisher(MarkerArray, '/thermal/human_boxes', 10)
         self.position_pub = self.create_publisher(Float32MultiArray, '/thermal/human_positions', 10)
+        self.meta_pub = self.create_publisher(Float32MultiArray, '/thermal/detection_metadata', 10)
         
         if self.debug:
             self.debug_pub = self.create_publisher(Image, '/thermal/debug_image', 10)
@@ -72,10 +73,20 @@ class ThermalDetectionNode(Node):
                 pos_msg.data = [coord for c in centers for coord in (c[0]/msg.width, c[1]/msg.height)]
                 self.position_pub.publish(pos_msg)
                 
+                # Publish metadata: [area1, temp_dev1, area2, temp_dev2, ...]
+                meta_msg = Float32MultiArray()
+                for (x, y, w, h) in boxes:
+                    area = float(w * h)
+                    temp_dev = 0.0  # placeholder — needs thermal_processing to return temperature
+                    meta_msg.data.extend([area, temp_dev])
+                self.meta_pub.publish(meta_msg)
+                
                 self.get_logger().debug(f'Detected {len(boxes)} humans')
             else:
+                # Publish empty messages when nothing detected
                 self.marker_pub.publish(MarkerArray())
                 self.position_pub.publish(Float32MultiArray())
+                self.meta_pub.publish(Float32MultiArray())
             
             if self.debug and debug_image is not None:
                 debug_msg = self.bridge.cv2_to_imgmsg(debug_image, encoding='bgr8')
