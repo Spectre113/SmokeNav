@@ -15,6 +15,7 @@ class HumanPoseAdapterNode(Node):
         self.declare_parameter('hide_target_when_close', True)
         self.declare_parameter('hide_distance', 0.75)
         self.declare_parameter('reappear_distance', 1.0)
+        self.declare_parameter('publish_humans_from_pose', False)
 
         self.latest_pose = None
         self.latest_detected = False
@@ -26,6 +27,9 @@ class HumanPoseAdapterNode(Node):
         self.hide_target_when_close = bool(self.get_parameter('hide_target_when_close').value)
         self.hide_distance = float(self.get_parameter('hide_distance').value)
         self.reappear_distance = float(self.get_parameter('reappear_distance').value)
+        self.publish_humans_from_pose = bool(
+            self.get_parameter('publish_humans_from_pose').value
+        )
 
         self.create_subscription(PoseStamped, '/human_pose', self.pose_cb, 10)
         self.create_subscription(Bool, '/human_localization/detected', self.detected_cb, 10)
@@ -36,6 +40,8 @@ class HumanPoseAdapterNode(Node):
         self.target_pub = self.create_publisher(Float32MultiArray, '/target_info', 10)
 
     def pose_cb(self, msg: PoseStamped) -> None:
+        if not self.publish_humans_from_pose:
+            return
         arr = PoseArray()
         arr.header = msg.header
         arr.poses = [msg.pose]
@@ -79,7 +85,7 @@ class HumanPoseAdapterNode(Node):
                             f'Restore target: moved away (dist={distance:.2f} >= {self.reappear_distance:.2f})'
                         )
 
-                target_visible = self.latest_detected and (not self.target_hidden_close)
+                target_visible = (self.latest_detected or self.latest_conf > 0.35) and (not self.target_hidden_close)
                 detected = 1.0 if target_visible else 0.0
 
         out.data = [detected, angle, distance, self.latest_conf]

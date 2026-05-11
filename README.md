@@ -18,8 +18,9 @@ The navigation stack is intentionally lightweight, but it is no longer a raw thr
 
 - `src/project_sim` - Gazebo world, robot URDF, robot spawn, full-stack launch files.
 - `src/project_nav` - obstacle fusion, local/global maps, exploration, target-aware navigation.
-- `src/project_detection` - Gazebo human detector and target marker.
-- `src/human_localization` - target localization and adapter to `/target_info`.
+- `src/project_detection` - target marker and optional Gazebo ground-truth detector utilities.
+- `src/human_detector` - radar/thermal/depth human candidate detection.
+- `src/human_localization` - target tracking/localization and adapter to `/target_info`.
 - `src/project_smoke` - LiDAR smoke degradation filter and smoke-density publication.
 
 ## 2. Requirements
@@ -55,7 +56,7 @@ For the packages touched by the current navigation stack:
 ```bash
 cd ~/AMR_ws/src/SmokeNav-test
 source /opt/ros/humble/setup.bash
-colcon build --packages-select project_nav project_smoke project_sim --symlink-install
+colcon build --packages-select project_nav project_smoke project_sim human_detector human_localization project_detection --symlink-install
 source install/setup.bash
 ```
 
@@ -73,15 +74,47 @@ This starts:
 - Gazebo world and robot spawn;
 - `robot_state_publisher` and required static transforms;
 - smoke filter `/scan -> /scan_smoked`;
-- Gazebo human detector;
+- sensor-based human detection from radar, thermal image, and depth support;
+- simulation-only heartbeat gating from the Gazebo `human_*` model, so boxes and walls are not accepted as people;
 - human localization and `/target_info` adapter;
 - target marker in Gazebo;
 - sector analyzer with TF2, robust fusion, 9 sectors, local costmap, and global map;
 - goal-aware navigation controller.
 
-## 5. Navigation Architecture
+## 5. Human Detection Architecture
 
-### 5.1 Perception And Fusion
+The default full stack uses sensor-based target detection. The optional Gazebo model-state detector exists for debugging, but it is not the default `/humans` source.
+
+Roles:
+
+- LiDAR: obstacle safety, local costmap, and global exploration map through `sector_analyzer_node`.
+- Radar: metric human candidates from `/radar/points`; clusters carry center, point count, and spread so wall-like returns can be penalized.
+- Thermal camera: human-like appearance/bounding-box evidence from `/thermal/image_raw`.
+- Depth camera: geometric support for a radar/thermal candidate using `/camera/depth/color/points`.
+- Simulation heartbeat: a synthetic biosignal emitted only by Gazebo models named `human_*`; in the full simulation launch it is required as a final "living target" confirmation.
+- Ultrasonic: close front safety for navigation, not human classification.
+
+Human detection flow:
+
+- `radar_detection_node` clusters `/radar/points` and publishes `/radar/human_clusters`.
+- `thermal_detection_node` publishes normalized thermal boxes on `/thermal/human_positions`.
+- `sim_human_heartbeat` reads `/gazebo/model_states`, transforms the configured `human_*` model into `base_link`, and publishes a pulse-like signature on `/human_heartbeat`.
+- `fusion_node` transforms radar/depth data into `base_link`, scores radar shape, matches thermal bearing, checks depth support, gates candidates by `/human_heartbeat` in simulation, and publishes `/humans`.
+- `human_localization` tracks `/humans` and publishes `/human_localization/pose`, `/human_localization/detected`, and `/human_localization/confidence`.
+- `human_pose_adapter` converts localization output into `/target_info` for navigation.
+
+This is intentionally a simulation allowance, not a real-world physiological sensor model. The goal is to keep global detection responsible for finding the red human cylinder while local navigation remains responsible for not hitting walls, boxes, or corridor edges.
+
+Useful debug topics:
+
+- `/human_detection/metrics`: JSON with radar/thermal/depth freshness, support counts, and best confidence.
+- `/human_heartbeat`: repeated `[x, y, z, strength, phase]` packets in `base_link` for simulation-only human confirmation.
+- `/humans`: fused human candidates in `base_link`; `pose.orientation.w` carries candidate confidence.
+- `/target_info`: `[detected, angle_rad, distance_m, confidence]` consumed by navigation.
+
+## 6. Navigation Architecture
+
+### 6.1 Perception And Fusion
 
 Node:
 
@@ -128,7 +161,7 @@ Default detailed sector count is `9`.
 
 The global map is not unbounded SLAM. It is a fixed-size occupancy grid, currently `30 x 30 m` at `0.10 m/cell`, so memory use stays bounded. Unknown cells remain `-1`, free cells become `0`, and occupied cells approach `100`.
 
-### 5.2 Target-Aware Navigation
+### 6.2 Target-Aware Navigation
 
 Node:
 
@@ -157,6 +190,7 @@ Behavior:
 
 - If a confident target exists, the robot moves toward it.
 - If the target disappears briefly, target memory can keep the last target for a short time.
+- When the target is reached, `STOP_TARGET_REACHED` is held briefly, target memory is cleared, and exploration resumes instead of latching into a permanent stop.
 - If no target is available, the robot keeps exploring instead of stopping.
 - Exploration first uses `/exploration_hint` from the global frontier map.
 - If no fresh global frontier is available, exploration falls back to `/sector_distances_detailed`.
@@ -168,7 +202,7 @@ Outputs:
 - `/cmd_vel` (`geometry_msgs/Twist`)
 - `/navigation_metrics` (`std_msgs/String`): JSON runtime metrics.
 
-## 6. Key Parameters
+## 7. Key Parameters
 
 Main launch files:
 
@@ -232,12 +266,15 @@ Important navigation parameters:
 - `exploration_hint_timeout`: max age of a frontier hint.
 - `exploration_turn_gain`: turn gain toward the best detailed sector.
 - `exploration_center_bias`: penalty for choosing hard-left/hard-right exploration sectors.
+- `target_reached_hold_sec`: short pause after reaching the detected target.
+- `target_reacquire_distance`: distance required before a new target signal is accepted after target reach.
+- `clear_target_after_reached`: clears stale target memory so the robot can continue exploration.
 
 Current simulation-oriented values are intentionally less conservative than real-robot safety values. This is a Gazebo test stack.
 
-## 7. Metrics
+## 8. Metrics
 
-### 7.1 Sensor Fusion Metrics
+### 8.1 Sensor Fusion Metrics
 
 Topic:
 
@@ -263,7 +300,7 @@ JSON fields include:
 - `frame`: fusion frame, normally `base_link`.
 - `global_frame`: map frame, normally `map`.
 
-### 7.2 Navigation Metrics
+### 8.2 Navigation Metrics
 
 Topic:
 
@@ -290,7 +327,27 @@ JSON fields include:
 - `cmd_linear_x`: commanded forward velocity.
 - `cmd_angular_z`: commanded yaw velocity.
 
-## 8. Useful Diagnostics
+### 8.3 Human Detection Metrics
+
+Topic:
+
+```bash
+ros2 topic echo /human_detection/metrics
+```
+
+JSON fields include:
+
+- `radar_fresh`, `thermal_fresh`, `heartbeat_fresh`, `depth_fresh`: current input freshness.
+- `radar_candidates`: radar clusters after TF and range filtering.
+- `thermal_detections`: thermal boxes in the latest image.
+- `heartbeat_signals`: simulation heartbeat signals currently visible to fusion.
+- `depth_support_points`: depth points available for candidate support.
+- `published_humans`: fused candidates published to `/humans`.
+- `best_confidence`: confidence of the best current human candidate.
+- `best_heartbeat_score`: heartbeat support of the best current candidate.
+- `smoke_density`: active smoke density.
+
+## 9. Useful Diagnostics
 
 Basic checks:
 
@@ -301,6 +358,7 @@ ros2 topic echo /sector_distances --once
 ros2 topic echo /free_sectors_detailed --once
 ros2 topic echo /sector_distances_detailed --once
 ros2 topic echo /exploration_hint --once
+ros2 topic echo /human_heartbeat --once
 ros2 topic echo /cmd_vel --once
 ```
 
@@ -308,6 +366,7 @@ Metrics:
 
 ```bash
 ros2 topic echo /sensor_fusion_metrics --once
+ros2 topic echo /human_detection/metrics --once
 ros2 topic echo /navigation_metrics --once
 ros2 topic echo /smoke/density --once
 ```
@@ -331,7 +390,7 @@ ros2 run tf2_ros tf2_echo base_link ultrasonic_front_link
 
 If `sector_analyzer_node` warns `TF unavailable ...` and `allow_tf_fallback` is `false`, that sensor data is rejected. This is intentional: using obstacle points in the wrong frame is worse than dropping them.
 
-## 9. Common Decisions In Logs
+## 10. Common Decisions In Logs
 
 `goal_aware_nav_node` prints decisions when they change.
 
@@ -347,9 +406,9 @@ Common decisions:
 - `RECOVERY_STUCK`: odometry progress was too low, recovery maneuver is active.
 - `STOP_TIMEOUT`: perception data is stale.
 - `STOP_TRAPPED`: front and sides are too constrained.
-- `STOP_TARGET_REACHED`: target reached according to distance hint.
+- `STOP_TARGET_REACHED`: target reached according to distance hint; this is now a short hold state before exploration resumes.
 
-## 10. Smoke
+## 11. Smoke
 
 `project_smoke` degrades LiDAR by noise, max-range reduction, and random dropouts.
 
@@ -365,7 +424,7 @@ ros2 launch project_sim sim_full_stack.launch.py density:=0.5
 
 Scenario launch files can also pass density, for example clear/moderate/dense scenarios if present in `src/project_sim/launch`.
 
-## 11. Human Target Position
+## 12. Human Target Position
 
 World file:
 
@@ -375,7 +434,7 @@ Look for:
 
 ```xml
 <model name="human_0">
-  <pose>1.5 0.0 0.0 0 0 0</pose>
+  <pose>3.5 -3.0 0.0 0 0 0</pose>
 ```
 
 Pose format:
@@ -394,7 +453,7 @@ source install/setup.bash
 ros2 launch project_sim sim_full_stack.launch.py
 ```
 
-## 12. Target Consumption
+## 13. Target Consumption
 
 Target consumption is configured in:
 
@@ -411,7 +470,7 @@ When the robot gets close enough, the detector can delete:
 - `human_0`
 - `goal_target_marker`
 
-## 13. Gazebo Cleanup
+## 14. Gazebo Cleanup
 
 If Gazebo is stuck, or `gzserver` exits because an old process is still running:
 
@@ -434,13 +493,19 @@ source install/setup.bash
 ros2 launch project_sim sim_full_stack.launch.py
 ```
 
-## 14. Development Checks
+## 15. Development Checks
 
 Compile changed Python files:
 
 ```bash
 cd ~/AMR_ws/src/SmokeNav-test
 python3 -m py_compile \
+  src/human_detector/human_detector/fusion_node.py \
+  src/human_detector/human_detector/radar_clustering.py \
+  src/human_detector/human_detector/radar_detection_node.py \
+  src/human_detector/human_detector/thermal_detection_node.py \
+  src/human_localization/human_localization/tracker.py \
+  src/human_localization/human_localization/human_localization_node.py \
   src/project_nav/project_nav/sector_analyzer_node.py \
   src/project_nav/project_nav/goal_aware_nav_node.py \
   src/project_smoke/project_smoke/scan_smoke_filter.py

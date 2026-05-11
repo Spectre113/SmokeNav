@@ -53,6 +53,9 @@ class GoalAwareNavNode(Node):
         self.declare_parameter('use_target_memory', True)
         self.declare_parameter('target_memory_timeout', 2.0)
         self.declare_parameter('target_hint_stop_distance', 0.8)
+        self.declare_parameter('target_reached_hold_sec', 0.8)
+        self.declare_parameter('target_reacquire_distance', 1.1)
+        self.declare_parameter('clear_target_after_reached', True)
         self.declare_parameter('search_linear_speed', 0.12)
         self.declare_parameter('prefer_left', True)
         self.declare_parameter('commit_time_sec', 1.2)
@@ -142,6 +145,15 @@ class GoalAwareNavNode(Node):
         self.target_memory_timeout = float(self.get_parameter('target_memory_timeout').value)
         self.target_hint_stop_distance = float(
             self.get_parameter('target_hint_stop_distance').value
+        )
+        self.target_reached_hold_sec = float(
+            self.get_parameter('target_reached_hold_sec').value
+        )
+        self.target_reacquire_distance = float(
+            self.get_parameter('target_reacquire_distance').value
+        )
+        self.clear_target_after_reached = bool(
+            self.get_parameter('clear_target_after_reached').value
         )
         self.search_linear_speed = float(self.get_parameter('search_linear_speed').value)
         self.prefer_left = bool(self.get_parameter('prefer_left').value)
@@ -270,6 +282,8 @@ class GoalAwareNavNode(Node):
         self.last_valid_target_angle = 0.0
         self.last_valid_target_distance = 0.0
         self.last_valid_target_confidence = 0.0
+        self.target_reached_latched = False
+        self.target_reached_until = None
 
         self.last_free_time = None
         self.last_distance_time = None
@@ -366,6 +380,12 @@ class GoalAwareNavNode(Node):
         self.target_distance = self.sanitize_distance(msg.data[2])
         self.target_confidence = float(msg.data[3])
         self.last_target_time = self.get_clock().now()
+
+        if self.target_reached_latched:
+            if self.should_reacquire_target_after_reached():
+                self.clear_target_reached_latch()
+            else:
+                return
 
         if self.is_current_target_valid():
             if self.last_valid_target_time is None:
@@ -969,6 +989,9 @@ class GoalAwareNavNode(Node):
         )
 
     def get_navigation_target(self) -> Optional[tuple[float, float, str]]:
+        if self.target_reached_latched:
+            return None
+
         if self.has_fresh_target_data(self.perception_timeout) and self.is_current_target_valid():
             return self.target_angle, self.target_distance, 'current'
 
@@ -982,6 +1005,10 @@ class GoalAwareNavNode(Node):
         return self.last_valid_target_angle, self.last_valid_target_distance, 'memory'
 
     def should_stop_for_target_hint(self) -> bool:
+        now = self.get_clock().now()
+        if self.target_reached_latched:
+            return self.target_reached_until is not None and now < self.target_reached_until
+
         if self.has_fresh_target_data(self.target_memory_timeout):
             current_target_reached = (
                 self.target_detected and
@@ -994,16 +1021,48 @@ class GoalAwareNavNode(Node):
                 0.0 < self.target_distance <= self.target_hint_stop_distance
             )
             if current_target_reached or hidden_target_reached:
+                self.mark_target_reached()
                 return True
 
         if self.last_valid_target_time is None:
             return False
 
         dt_memory = (self.get_clock().now() - self.last_valid_target_time).nanoseconds / 1e9
-        return (
+        memory_target_reached = (
             dt_memory <= self.target_memory_timeout and
             0.0 < self.last_valid_target_distance <= self.target_stop_distance
         )
+        if memory_target_reached:
+            self.mark_target_reached()
+        return memory_target_reached
+
+    def mark_target_reached(self) -> None:
+        if self.target_reached_latched:
+            return
+
+        self.target_reached_latched = True
+        self.target_reached_until = (
+            self.get_clock().now() +
+            Duration(seconds=max(0.0, self.target_reached_hold_sec))
+        )
+
+        if self.clear_target_after_reached:
+            self.last_valid_target_time = None
+            self.last_valid_target_angle = 0.0
+            self.last_valid_target_distance = 0.0
+            self.last_valid_target_confidence = 0.0
+            self.target_session_start = None
+
+    def should_reacquire_target_after_reached(self) -> bool:
+        return (
+            self.target_detected and
+            self.target_confidence >= self.target_confidence_threshold and
+            self.target_distance >= self.target_reacquire_distance
+        )
+
+    def clear_target_reached_latch(self) -> None:
+        self.target_reached_latched = False
+        self.target_reached_until = None
 
     def update_runtime_metrics(self, decision: str) -> None:
         clearances = [

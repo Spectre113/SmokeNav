@@ -2,6 +2,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -56,4 +57,23 @@ def generate_launch_description():
         )
     )
 
-    return LaunchDescription([density_arg, sim, smoke, nav, detection])
+    localization = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution(
+                [FindPackageShare("human_localization"), "launch", "human_localization.launch.py"]
+            )
+        )
+    )
+
+    adapter = Node(
+        package="human_localization",
+        executable="human_pose_adapter",
+        name="human_pose_adapter_node",
+        output="screen",
+        parameters=[{
+            "use_sim_time": True,
+            "publish_humans_from_pose": False,
+        }],
+    )
+
+    return LaunchDescription([density_arg, sim, smoke, nav, detection, localization, adapter])

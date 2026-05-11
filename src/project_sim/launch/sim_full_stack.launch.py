@@ -43,6 +43,10 @@ def generate_launch_description():
         executable='human_pose_adapter',
         name='human_pose_adapter_node',
         output='screen',
+        parameters=[{
+            'use_sim_time': True,
+            'publish_humans_from_pose': False,
+        }],
     )
 
     sector_analyzer = Node(
@@ -60,6 +64,9 @@ def generate_launch_description():
             'enable_radar': True,
             'enable_depth_camera': True,
             'enable_ultrasonic': True,
+            'smoke_affects_radar': False,
+            'smoke_affects_depth': True,
+            'smoke_affects_ultrasonic': False,
             'base_frame': 'base_link',
             'enable_tf_transform': True,
             'allow_tf_fallback': False,
@@ -118,6 +125,9 @@ def generate_launch_description():
             'use_target_memory': True,
             'target_memory_timeout': 2.0,
             'target_hint_stop_distance': 0.8,
+            'target_reached_hold_sec': 0.8,
+            'target_reacquire_distance': 1.1,
+            'clear_target_after_reached': True,
             'search_linear_speed': 0.12,
             'front_safe_distance': 0.65,
             'front_blocked_distance': 0.40,

@@ -21,6 +21,7 @@ setup(
     entry_points={
         "console_scripts": [
             "gazebo_human_detector = project_detection.gazebo_human_detector:main",
+            "sim_human_heartbeat = project_detection.sim_human_heartbeat:main",
             "target_gazebo_marker = project_detection.target_gazebo_marker:main",
         ],
     },
