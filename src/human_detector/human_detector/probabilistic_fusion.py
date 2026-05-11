@@ -48,18 +48,18 @@ class FusionMatch:
 class FusionConfig:
     """Configurable parameters for the fusion model."""
     # Camera intrinsics
-    image_width: int = 640
-    image_height: int = 512
-    focal_length_px: float = 300.0
-    cx: float = 320.0
-    cy: float = 256.0
+    image_width: int = 320
+    image_height: int = 240
+    focal_length_px: float = 277.0
+    cx: float = 160.0
+    cy: float = 120.0
 
     # Association
-    match_distance_px: float = 80.0       # max pixel distance to associate
+    match_distance_px: float = 150.0      # max pixel distance to associate
 
     # Fusion
     prior_human_probability: float = 0.1  # P(H)
-    confidence_threshold: float = 0.3     # minimum posterior to publish
+    confidence_threshold: float = 0.0     # minimum posterior to publish
 
     # Radar likelihood model
     radar_range_sigma: float = 1.5        # meters, reliability decay with distance
@@ -98,16 +98,41 @@ class ProbabilisticFusion:
     def set_thermal_detections(self, detections: List[ThermalDetection]):
         self._thermal = detections
 
+    def _radar_to_thermal_frame(self, det: RadarDetection) -> Tuple[float, float, float]:
+        """
+        Transform radar detection from radar_link to thermal_optical_frame.
+        radar_link is at (0.1, 0, 0.18) in base_link
+        thermal_link is at (0.2, 0, 0.17) in base_link
+        thermal_optical_frame: z-forward, x-right, y-down
+        """
+        # Offset from radar to thermal in base_link coords
+        dx = 0.2 - 0.1  # = 0.1 (thermal is 0.1m ahead of radar)
+        dz = 0.17 - 0.18  # = -0.01
+        
+        # Point in base_link from radar_link
+        bx = det.x + 0.1  # radar_link forward
+        by = det.y         # radar_link left
+        bz = det.z + 0.18  # radar_link up
+        
+        # Point relative to thermal_link
+        tx = bx - 0.2
+        ty = by
+        tz = bz - 0.17
+        
+        # Convert to thermal_optical_frame (z-forward, x-right, y-down)
+        return (-ty, -tz, tx)  # (x_opt, y_opt, z_opt)
+
     # ── Projection ──
 
     def project_to_image(self, det: RadarDetection) -> Optional[Tuple[float, float]]:
-        """Project 3D radar point to 2D image plane. Returns (u, v) or None."""
-        if det.x <= 0.5:  # behind or too close
+        x_opt, y_opt, z_opt = self._radar_to_thermal_frame(det)
+        
+        if z_opt <= 0.5:
             return None
-
-        u = self.config.cx + (det.y / det.x) * self.config.focal_length_px
-        v = self.config.cy - (det.z / det.x) * self.config.focal_length_px
-
+        
+        u = self.config.cx + (x_opt / z_opt) * self.config.focal_length_px
+        v = self.config.cy + (y_opt / z_opt) * self.config.focal_length_px
+        
         if 0 <= u < self.config.image_width and 0 <= v < self.config.image_height:
             return (u, v)
         return None
@@ -247,14 +272,11 @@ class ProbabilisticFusion:
     # ── Diagnostics ──
 
     def get_debug_info(self, matches: List[FusionMatch]) -> dict:
-        """Return dict with debugging info about the latest fusion."""
         return {
             'radar_count': len(self._radar),
             'thermal_count': len(self._thermal),
             'matches': len(matches),
             'confidences': [round(m.confidence, 3) for m in matches],
-            'unmatched_radar': len(self._radar) -
-                len(set(m.radar for m in matches)),
-            'unmatched_thermal': len(self._thermal) -
-                len(set(m.thermal for m in matches)),
+            'unmatched_radar': len(self._radar) - len(matches),
+            'unmatched_thermal': len(self._thermal) - len(matches),
         }

@@ -21,8 +21,8 @@ class FusionNode(Node):
 
         # ── Parameters ──
         self.declare_parameter('match_distance_px', 80.0)
-        self.declare_parameter('confidence_threshold', 0.3)
-        self.declare_parameter('prior_human_probability', 0.1)
+        self.declare_parameter('confidence_threshold', 0.0)
+        self.declare_parameter('prior_human_probability', 0.5)
         self.declare_parameter('radar_range_sigma', 1.5)
         self.declare_parameter('radar_cluster_weight', 0.7)
         self.declare_parameter('thermal_temp_sigma', 2.0)
@@ -99,6 +99,8 @@ class FusionNode(Node):
                 detections.append(ThermalDetection(
                     norm_x=float(data[i]),
                     norm_y=float(data[i + 1]),
+                    area=2000.0,
+                    temp_deviation=0.0,
                 ))
 
         self.fusion.set_thermal_detections(detections)
@@ -109,10 +111,8 @@ class FusionNode(Node):
     # ── Fusion trigger ──
 
     def try_fuse(self):
-        """Run fusion when both sensor streams have arrived at least once."""
-        if not self._has_radar or not self._has_thermal:
-            return
-
+        # If thermal detects human, publish it immediately
+        # Just use thermal for angle, radar for distance when both available
         matches = self.fusion.fuse()
         self._publish(matches)
 

@@ -18,7 +18,7 @@ class RadarDetectionNode(Node):
         
         # Parameters
         self.declare_parameter('cluster_epsilon', 0.3)
-        self.declare_parameter('cluster_min_points', 5)
+        self.declare_parameter('cluster_min_points', 2)
         
         epsilon = self.get_parameter('cluster_epsilon').value
         min_points = self.get_parameter('cluster_min_points').value

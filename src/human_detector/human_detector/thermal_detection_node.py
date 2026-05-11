@@ -18,12 +18,12 @@ class ThermalDetectionNode(Node):
         super().__init__('thermal_detection_node')
         
         # Parameters
-        self.declare_parameter('temp_min', 34.0)
+        self.declare_parameter('temp_min', 36.0)
         self.declare_parameter('temp_max', 40.5)
-        self.declare_parameter('min_area', 100)
-        self.declare_parameter('max_area', 5000)
-        self.declare_parameter('min_aspect_ratio', 0.3)
-        self.declare_parameter('max_aspect_ratio', 3.0)
+        self.declare_parameter('min_area', 10)
+        self.declare_parameter('max_area', 100000)
+        self.declare_parameter('min_aspect_ratio', 0.1)
+        self.declare_parameter('max_aspect_ratio', 10.0)
         self.declare_parameter('debug', False)
         self.declare_parameter('camera_frame_id', 'thermal_camera_frame')
         
@@ -56,7 +56,7 @@ class ThermalDetectionNode(Node):
     def callback(self, msg: Image):
         """Process thermal image."""
         try:
-            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='mono8')
             boxes, debug_image = self.detector.process_frame(cv_image, debug=self.debug)
             
             if boxes:
