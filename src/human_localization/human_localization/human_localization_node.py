@@ -47,13 +47,12 @@ class HumanLocalizationNode(Node):
         detections = [(p.position.x, p.position.y) for p in msg.poses]
 
         tracks = self.tracker.update(detections, msg.header.stamp)
-        confirmed = [t for t in tracks if t.confirmed]
-
-        if not confirmed:
+        if not tracks:
             self.pub_detected.publish(Bool(data=False))
+            self.pub_conf.publish(Float32(data=0.0))
             return
 
-        best = max(confirmed, key=lambda t: t.confidence)
+        best = max(tracks, key=lambda t: t.confidence)
 
         self.pub_detected.publish(Bool(data=True))
         self.pub_conf.publish(Float32(data=best.confidence))

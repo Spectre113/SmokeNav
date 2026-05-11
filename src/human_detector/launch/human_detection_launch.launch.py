@@ -9,6 +9,7 @@ def generate_launch_description():
             executable='thermal_detection_node',
             name='thermal_detection_node',
             output='screen',
+            parameters=[{'use_sim_time': True}],
         ),
         
         # Node 2: Radar detection
@@ -17,6 +18,7 @@ def generate_launch_description():
             executable='radar_detection_node',
             name='radar_detection_node',
             output='screen',
+            parameters=[{'use_sim_time': True}],
         ),
         
         # Node 3: Fusion
@@ -25,5 +27,6 @@ def generate_launch_description():
             executable='fusion_node',
             name='fusion_node',
             output='screen',
+            parameters=[{'use_sim_time': True}],
         ),
     ])

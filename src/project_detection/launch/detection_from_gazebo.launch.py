@@ -1,18 +1,18 @@
 from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
+from launch.substitutions import PathJoinSubstitution
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    detector = Node(
-        package="project_detection",
-        executable="gazebo_human_detector",
-        output="screen",
-        parameters=[
-            {"use_sim_time": True},
-            {"model_name_prefix": "human_"},
-            {"world_frame": "map"},
-            {"publish_markers": True},
-        ],
+    human_detection = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution(
+                [FindPackageShare('human_detector'), 'launch', 'human_detection_launch.launch.py']
+            )
+        )
     )
 
     target_marker = Node(
@@ -32,4 +32,4 @@ def generate_launch_description():
         ],
     )
 
-    return LaunchDescription([detector, target_marker])
+    return LaunchDescription([human_detection, target_marker])

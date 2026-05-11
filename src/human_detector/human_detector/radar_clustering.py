@@ -1,16 +1,6 @@
 #!/usr/bin/env python3
 
 import numpy as np
-import sys
-import os
-
-# Add your virtual environment's site-packages to the path
-venv_path = os.path.expanduser('~/ros2_venv/lib/python3.10/site-packages')
-if os.path.exists(venv_path) and venv_path not in sys.path:
-    sys.path.insert(0, venv_path)
-    print(f"Added {venv_path} to sys.path")
-
-from sklearn.cluster import DBSCAN
 import struct
 
 class RadarClustering:
@@ -18,7 +8,7 @@ class RadarClustering:
     Handles radar point cloud processing and clustering.
     """
     
-    def __init__(self, epsilon=0.3, min_points=5, max_range=10.0):
+    def __init__(self, epsilon=0.45, min_points=3, max_range=10.0):
         self.epsilon = epsilon
         self.min_points = min_points
         self.max_range = max_range
@@ -50,30 +40,38 @@ class RadarClustering:
     
     def cluster_points(self, points):
         """
-        Cluster points using DBSCAN.
-        Returns list of cluster centers.
+        Cluster points using a simple radius-based connected-components pass.
+        Returns a list of cluster centers.
         """
         if len(points) < self.min_points:
             return []
-        
-        clustering = DBSCAN(eps=self.epsilon, min_samples=self.min_points).fit(points)
-        labels = clustering.labels_
-        
-        unique_labels = set(labels)
+
+        remaining = set(range(len(points)))
         clusters = []
-        
-        for label in unique_labels:
-            if label == -1:
-                continue
-            
-            cluster_points = points[labels == label]
-            
-            if len(cluster_points) < self.min_points:
-                continue
-            
-            center = np.mean(cluster_points, axis=0)
-            clusters.append(center)
-        
+
+        while remaining:
+            seed = remaining.pop()
+            cluster_indices = {seed}
+            queue = [seed]
+
+            while queue:
+                current = queue.pop()
+                current_point = points[current]
+
+                neighbors = []
+                for index in list(remaining):
+                    if np.linalg.norm(points[index] - current_point) <= self.epsilon:
+                        neighbors.append(index)
+
+                for index in neighbors:
+                    remaining.remove(index)
+                    cluster_indices.add(index)
+                    queue.append(index)
+
+            if len(cluster_indices) >= self.min_points:
+                cluster_points = points[list(cluster_indices)]
+                clusters.append(np.mean(cluster_points, axis=0))
+
         return clusters
     
     def process(self, msg):
@@ -88,10 +86,16 @@ class RadarClustering:
         
         points = points[np.linalg.norm(points[:, :2], axis=1) <= self.max_range]
 
+        if len(points) < self.min_points:
+            return np.array([])
+
         clusters = self.cluster_points(points)
         
         if len(clusters) == 0:
-            return np.array([])
+            # Fallback: expose the closest radar returns as a small candidate set.
+            order = np.argsort(np.linalg.norm(points[:, :2], axis=1))
+            fallback = points[order[:min(len(points), self.min_points)]]
+            return np.array(fallback).reshape(-1)
         
         # Flatten: [x1,y1,z1, x2,y2,z2, ...]
         result = []

@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import (
     Command,
@@ -9,9 +9,15 @@ from launch.substitutions import (
 )
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from pathlib import Path
 
 
 def generate_launch_description():
+    # If ~/.ros/log is not writable (common after sudo runs), gzserver can crash.
+    # Use a workspace-local log dir by default so Gazebo + gazebo_ros always start.
+    workspace_log_dir = str((Path.cwd() / ".roslog").resolve())
+    workspace_gazebo_log_dir = str((Path.cwd() / ".gazebo_log").resolve())
+
     default_world = PathJoinSubstitution(
         [FindPackageShare("project_sim"), "worlds", "custom-flat.world"]
     )
@@ -19,6 +25,11 @@ def generate_launch_description():
         [FindPackageShare("project_sim"), "urdf", "robot.urdf.xacro"]
     )
 
+    gui_arg = DeclareLaunchArgument(
+        "gui",
+        default_value="true",
+        description="Start Gazebo client (gzclient) if true.",
+    )
     world_arg = DeclareLaunchArgument(
         "world",
         default_value=default_world,
@@ -46,7 +57,10 @@ def generate_launch_description():
                 [FindPackageShare("gazebo_ros"), "launch", "gazebo.launch.py"]
             )
         ),
-        launch_arguments={"world": LaunchConfiguration("world")}.items(),
+        launch_arguments={
+            "world": LaunchConfiguration("world"),
+            "gui": LaunchConfiguration("gui"),
+        }.items(),
     )
 
     robot_state_publisher = Node(
@@ -91,6 +105,10 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            SetEnvironmentVariable(name="ROS_LOG_DIR", value=workspace_log_dir),
+            SetEnvironmentVariable(name="GAZEBO_LOG_PATH", value=workspace_gazebo_log_dir),
+            ExecuteProcess(cmd=["mkdir", "-p", workspace_log_dir, workspace_gazebo_log_dir]),
+            gui_arg,
             world_arg,
             xacro_arg,
             robot_name_arg,
