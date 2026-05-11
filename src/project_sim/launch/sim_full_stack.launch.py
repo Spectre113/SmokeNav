@@ -1,35 +1,48 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    scan_topic_arg = DeclareLaunchArgument(
-        "scan_topic",
-        default_value="/scan",
-        description="LaserScan topic to use for navigation.",
+    density_arg = DeclareLaunchArgument(
+        'density',
+        default_value='0.0',
+        description='Smoke density in [0..1].',
     )
-    radar_topic_arg = DeclareLaunchArgument(
-        "radar_topic",
-        default_value="/radar/points",
-        description="PointCloud2 radar topic to use for navigation if available.",
+
+    sim = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare('project_sim'), 'launch', 'sim_bringup.launch.py'])
+        )
     )
-    depth_points_topic_arg = DeclareLaunchArgument(
-        "depth_points_topic",
-        default_value="/camera/depth/color/points",
-        description="RGB-D PointCloud2 topic to use for navigation if available.",
+
+    smoke = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare('project_smoke'), 'launch', 'smoke_filter.launch.py'])
+        ),
+        launch_arguments={'density': LaunchConfiguration('density')}.items(),
     )
-    ultrasonic_topic_arg = DeclareLaunchArgument(
-        "ultrasonic_topic",
-        default_value="/ultrasonic/front",
-        description="Range topic to use as a short-range front safety sensor.",
+
+    detection = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare('project_detection'), 'launch', 'detection_from_gazebo.launch.py'])
+        )
     )
-    require_target_arg = DeclareLaunchArgument(
-        "require_target",
-        default_value="false",
-        description="If true, stop when no target is available.",
+
+    localization = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([FindPackageShare('human_localization'), 'launch', 'human_localization.launch.py'])
+        )
+    )
+
+    adapter = Node(
+        package='human_localization',
+        executable='human_pose_adapter',
+        name='human_pose_adapter_node',
+        output='screen',
     )
 
     sector_analyzer = Node(
@@ -39,12 +52,10 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': True,
-            'scan_topic': LaunchConfiguration("scan_topic"),
-            'radar_topic': LaunchConfiguration("radar_topic"),
-            'depth_points_topic': LaunchConfiguration("depth_points_topic"),
-            'ultrasonic_topic': LaunchConfiguration("ultrasonic_topic"),
-            'output_topic': '/free_sectors',
-            'distance_topic': '/sector_distances',
+            'scan_topic': '/scan_smoked',
+            'radar_topic': '/radar/points',
+            'depth_points_topic': '/camera/depth/color/points',
+            'ultrasonic_topic': '/ultrasonic/front',
             'enable_lidar': True,
             'enable_radar': True,
             'enable_depth_camera': True,
@@ -52,8 +63,6 @@ def generate_launch_description():
             'base_frame': 'base_link',
             'enable_tf_transform': True,
             'allow_tf_fallback': False,
-            'front_half_angle_deg': 20.0,
-            'side_outer_angle_deg': 90.0,
             'num_detailed_sectors': 9,
             'front_safe_distance': 0.65,
             'side_safe_distance': 0.25,
@@ -62,9 +71,6 @@ def generate_launch_description():
             'source_percentile': 25.0,
             'radar_min_support': 2,
             'depth_min_support': 4,
-            'use_inf_as_free': True,
-            'publish_rate': 10.0,
-            'sensor_timeout': 1.0,
             'publish_costmap': True,
             'costmap_resolution': 0.05,
             'costmap_width_m': 5.0,
@@ -97,7 +103,8 @@ def generate_launch_description():
             'exploration_path_lookahead_m': 0.85,
             'frontier_min_path_distance': 1.2,
             'frontier_max_path_distance': 18.0,
-        }]
+            'sensor_timeout': 1.0,
+        }],
     )
 
     goal_nav = Node(
@@ -107,12 +114,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': True,
-            'control_rate': 10.0,
-            'perception_timeout': 1.0,
-            'require_target': ParameterValue(
-                LaunchConfiguration("require_target"),
-                value_type=bool,
-            ),
+            'require_target': False,
             'use_target_memory': True,
             'target_memory_timeout': 2.0,
             'target_hint_stop_distance': 0.8,
@@ -135,16 +137,16 @@ def generate_launch_description():
             'sensor_metrics_topic': '/sensor_fusion_metrics',
             'nav_metrics_topic': '/navigation_metrics',
             'smoke_density_topic': '/smoke/density',
-            'prefer_left': True,
-        }]
+        }],
     )
 
     return LaunchDescription([
-        scan_topic_arg,
-        radar_topic_arg,
-        depth_points_topic_arg,
-        ultrasonic_topic_arg,
-        require_target_arg,
+        density_arg,
+        sim,
+        smoke,
+        detection,
+        localization,
+        adapter,
         sector_analyzer,
         goal_nav,
     ])

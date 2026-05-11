@@ -15,5 +15,21 @@ def generate_launch_description():
         ],
     )
 
-    return LaunchDescription([detector])
+    target_marker = Node(
+        package="project_detection",
+        executable="target_gazebo_marker",
+        output="screen",
+        parameters=[
+            {"use_sim_time": True},
+            {"target_pose_topic": "/human_localization/pose"},
+            {"target_info_topic": "/target_info"},
+            {"marker_name": "goal_target_marker"},
+            {"marker_height": 0.12},
+            {"marker_radius": 0.16},
+            {"consume_on_reach": True},
+            {"consume_distance": 0.75},
+            {"target_entity_name": "human_0"},
+        ],
+    )
 
+    return LaunchDescription([detector, target_marker])

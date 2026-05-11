@@ -22,6 +22,7 @@ setup(
                 "launch/scenario_clear.launch.py",
                 "launch/scenario_moderate.launch.py",
                 "launch/scenario_dense.launch.py",
+                "launch/sim_full_stack.launch.py",
             ],
         ),
         ("share/" + package_name + "/worlds", glob("worlds/*.world")),
