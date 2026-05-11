@@ -1,6 +1,7 @@
 import json
 import math
 import heapq
+import random
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import DefaultDict, Dict, Iterable, List, Optional, Tuple
@@ -95,6 +96,19 @@ class SectorAnalyzerNode(Node):
         self.declare_parameter('depth_max_height', 1.2)
         self.declare_parameter('fallback_range', 3.5)
         self.declare_parameter('max_cloud_points', 5000)
+        self.declare_parameter('smoke_effect_seed', 4242)
+        self.declare_parameter('smoke_affects_radar', True)
+        self.declare_parameter('smoke_affects_depth', True)
+        self.declare_parameter('smoke_affects_ultrasonic', True)
+        self.declare_parameter('radar_smoke_range_scale', 0.25)
+        self.declare_parameter('radar_smoke_noise_std', 0.04)
+        self.declare_parameter('radar_smoke_dropout', 0.10)
+        self.declare_parameter('depth_smoke_range_scale', 0.55)
+        self.declare_parameter('depth_smoke_noise_std', 0.08)
+        self.declare_parameter('depth_smoke_dropout', 0.30)
+        self.declare_parameter('ultrasonic_smoke_range_scale', 0.35)
+        self.declare_parameter('ultrasonic_smoke_noise_std', 0.03)
+        self.declare_parameter('ultrasonic_smoke_dropout', 0.12)
 
         self.declare_parameter('publish_costmap', True)
         self.declare_parameter('costmap_resolution', 0.05)
@@ -192,6 +206,39 @@ class SectorAnalyzerNode(Node):
         self.depth_max_height = float(self.get_parameter('depth_max_height').value)
         self.fallback_range = float(self.get_parameter('fallback_range').value)
         self.max_cloud_points = int(self.get_parameter('max_cloud_points').value)
+        self.smoke_effect_seed = int(self.get_parameter('smoke_effect_seed').value)
+        self.smoke_affects_radar = bool(self.get_parameter('smoke_affects_radar').value)
+        self.smoke_affects_depth = bool(self.get_parameter('smoke_affects_depth').value)
+        self.smoke_affects_ultrasonic = bool(
+            self.get_parameter('smoke_affects_ultrasonic').value
+        )
+        self.radar_smoke_range_scale = float(
+            self.get_parameter('radar_smoke_range_scale').value
+        )
+        self.radar_smoke_noise_std = float(
+            self.get_parameter('radar_smoke_noise_std').value
+        )
+        self.radar_smoke_dropout = float(
+            self.get_parameter('radar_smoke_dropout').value
+        )
+        self.depth_smoke_range_scale = float(
+            self.get_parameter('depth_smoke_range_scale').value
+        )
+        self.depth_smoke_noise_std = float(
+            self.get_parameter('depth_smoke_noise_std').value
+        )
+        self.depth_smoke_dropout = float(
+            self.get_parameter('depth_smoke_dropout').value
+        )
+        self.ultrasonic_smoke_range_scale = float(
+            self.get_parameter('ultrasonic_smoke_range_scale').value
+        )
+        self.ultrasonic_smoke_noise_std = float(
+            self.get_parameter('ultrasonic_smoke_noise_std').value
+        )
+        self.ultrasonic_smoke_dropout = float(
+            self.get_parameter('ultrasonic_smoke_dropout').value
+        )
 
         self.publish_costmap = bool(self.get_parameter('publish_costmap').value)
         self.costmap_resolution = float(self.get_parameter('costmap_resolution').value)
@@ -271,6 +318,7 @@ class SectorAnalyzerNode(Node):
         self.current_frontier_world: Optional[Tuple[float, float]] = None
         self.last_exploration_path_length = 0.0
         self.last_exploration_path_cells = 0
+        self._smoke_rng = random.Random(self.smoke_effect_seed)
 
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -579,6 +627,10 @@ class SectorAnalyzerNode(Node):
             self.radar_max_range,
             self.radar_min_z,
             self.radar_max_z,
+            smoke_enabled=self.smoke_affects_radar,
+            smoke_range_scale=self.radar_smoke_range_scale,
+            smoke_noise_std=self.radar_smoke_noise_std,
+            smoke_dropout=self.radar_smoke_dropout,
         )
 
     def observations_from_depth(self, cloud: PointCloud2) -> Iterable[Observation]:
@@ -589,6 +641,10 @@ class SectorAnalyzerNode(Node):
             self.depth_max_range,
             self.depth_min_height,
             self.depth_max_height,
+            smoke_enabled=self.smoke_affects_depth,
+            smoke_range_scale=self.depth_smoke_range_scale,
+            smoke_noise_std=self.depth_smoke_noise_std,
+            smoke_dropout=self.depth_smoke_dropout,
         )
 
     def observations_from_cloud(
@@ -599,6 +655,10 @@ class SectorAnalyzerNode(Node):
         max_range: float,
         min_z: float,
         max_z: float,
+        smoke_enabled: bool,
+        smoke_range_scale: float,
+        smoke_noise_std: float,
+        smoke_dropout: float,
     ) -> List[Observation]:
         observations: List[Observation] = []
         if point_cloud2 is None:
@@ -612,6 +672,17 @@ class SectorAnalyzerNode(Node):
             y = float(point[1])
             z = float(point[2])
             obs = self.make_observation(source, x, y, z, cloud.header.frame_id, cloud.header.stamp)
+            if obs is None:
+                continue
+            obs = self.apply_smoke_to_observation(
+                obs,
+                min_range=min_range,
+                max_range=max_range,
+                smoke_enabled=smoke_enabled,
+                range_scale_gain=smoke_range_scale,
+                noise_std_gain=smoke_noise_std,
+                dropout_gain=smoke_dropout,
+            )
             if obs is None:
                 continue
             if obs.z < min_z or obs.z > max_z:
@@ -671,6 +742,17 @@ class SectorAnalyzerNode(Node):
             msg.header.frame_id,
             msg.header.stamp,
             occupied=occupied,
+        )
+        if obs is None:
+            return []
+        obs = self.apply_smoke_to_observation(
+            obs,
+            min_range=max(msg.min_range, 0.0),
+            max_range=msg.max_range,
+            smoke_enabled=self.smoke_affects_ultrasonic,
+            range_scale_gain=self.ultrasonic_smoke_range_scale,
+            noise_std_gain=self.ultrasonic_smoke_noise_std,
+            dropout_gain=self.ultrasonic_smoke_dropout,
         )
         return [obs] if obs is not None else []
 
@@ -809,6 +891,54 @@ class SectorAnalyzerNode(Node):
         while angle < -math.pi:
             angle += 2.0 * math.pi
         return angle
+
+    def current_smoke_density(self) -> float:
+        if self.latest_smoke_density is None:
+            return 0.0
+        return self.clamp(float(self.latest_smoke_density), 0.0, 1.0)
+
+    def apply_smoke_to_observation(
+        self,
+        obs: Observation,
+        min_range: float,
+        max_range: float,
+        smoke_enabled: bool,
+        range_scale_gain: float,
+        noise_std_gain: float,
+        dropout_gain: float,
+    ) -> Optional[Observation]:
+        if not smoke_enabled or not obs.occupied:
+            return obs
+
+        density = self.current_smoke_density()
+        if density <= 1e-6:
+            return obs
+
+        dropout_prob = self.clamp(dropout_gain * density, 0.0, 0.95)
+        if self._smoke_rng.random() < dropout_prob:
+            return None
+
+        effective_max_range = max(
+            min_range,
+            max_range * (1.0 - self.clamp(range_scale_gain, 0.0, 0.95) * density),
+        )
+        if obs.distance > effective_max_range:
+            return None
+
+        noise_std = max(0.0, noise_std_gain * density)
+        noisy_distance = obs.distance + self._smoke_rng.gauss(0.0, noise_std)
+        noisy_distance = self.clamp(noisy_distance, min_range, effective_max_range)
+
+        scale = noisy_distance / max(obs.distance, 1e-6)
+        return Observation(
+            obs.source,
+            obs.x * scale,
+            obs.y * scale,
+            obs.z * scale,
+            noisy_distance,
+            obs.angle,
+            obs.occupied,
+        )
 
     def legacy_distances_from_observations(
         self,
