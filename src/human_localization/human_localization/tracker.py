@@ -32,7 +32,7 @@ class Track:
         self.misses = 0
         self.confidence = min(1.0, self.confidence + 0.2)
 
-        if self.hits >= 3:
+        if self.hits >= 2:
             self.confirmed = True
 
         self.last_stamp = stamp

@@ -17,8 +17,8 @@ class RadarDetectionNode(Node):
         super().__init__('radar_detection_node')
         
         # Parameters
-        self.declare_parameter('cluster_epsilon', 0.3)
-        self.declare_parameter('cluster_min_points', 5)
+        self.declare_parameter('cluster_epsilon', 0.45)
+        self.declare_parameter('cluster_min_points', 3)
         
         epsilon = self.get_parameter('cluster_epsilon').value
         min_points = self.get_parameter('cluster_min_points').value
@@ -29,7 +29,7 @@ class RadarDetectionNode(Node):
         # Subscriber: radar point cloud from dataset/simulation
         self.subscription = self.create_subscription(
             PointCloud2,
-            '/radar/pointcloud',
+            '/radar/points',
             self.radar_callback,
             10
         )

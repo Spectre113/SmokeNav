@@ -4,7 +4,6 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray
 from geometry_msgs.msg import PoseArray, Pose
-import numpy as np
 
 
 class FusionNode(Node):
@@ -23,7 +22,7 @@ class FusionNode(Node):
         # Publisher
         self.pub = self.create_publisher(PoseArray, '/humans', 10)
         
-        self.get_logger().info('Fusion node ready')
+        self.get_logger().info('Fusion node ready (radar-primary, thermal-optional)')
     
     def thermal_cb(self, msg):
         self.thermal = [(msg.data[i], msg.data[i+1]) for i in range(0, len(msg.data), 2)]
@@ -45,34 +44,32 @@ class FusionNode(Node):
         return points_2d
     
     def fuse(self):
-        if not self.thermal or not self.radar:
+        if not self.radar:
             return
         
-        radar_2d = self.project_radar(self.radar)
-        
         humans = PoseArray()
-        humans.header.frame_id = 'base_link'
+        humans.header.frame_id = 'radar_link'
         humans.header.stamp = self.get_clock().now().to_msg()
         
-        # Simple matching: if radar point projects near thermal detection
-        for rx, ry, rz in self.radar:
-            for r2d in radar_2d:
-                for tx, ty in self.thermal:
-                    # tx, ty are normalized 0-1
-                    t_px, t_py = tx * 640, ty * 512
-                    dist = np.sqrt((t_px - r2d[0])**2 + (t_py - r2d[1])**2)
-                    
-                    if dist < 50:  # within 50 pixels
-                        pose = Pose()
-                        pose.position.x = rx
-                        pose.position.y = ry
-                        pose.position.z = rz
-                        pose.orientation.w = 1.0
-                        humans.poses.append(pose)
-                        break
+        radar_2d = self.project_radar(self.radar)
+        thermal_hits = len(self.thermal)
+
+        # Radar is the primary sensor here because it is the only one with
+        # usable geometry in the current simulation stack. Thermal detections
+        # are treated as optional confirmation/debug input.
+        for index, (rx, ry, rz) in enumerate(self.radar):
+            pose = Pose()
+            pose.position.x = rx
+            pose.position.y = ry
+            pose.position.z = rz
+            pose.orientation.w = 1.0
+            humans.poses.append(pose)
         
         self.pub.publish(humans)
-        self.get_logger().info(f'Detected {len(humans.poses)} humans')
+        self.get_logger().info(
+            f'Detected {len(humans.poses)} radar human candidates '
+            f'(thermal_hits={thermal_hits})'
+        )
         
         # Clear
         self.thermal = []
