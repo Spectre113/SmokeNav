@@ -13,5 +13,6 @@ human_localization:
     initial_position_variance: 1.0
     initial_velocity_variance: 4.0
 
+    # Input detections are expected in tracking_frame when PoseArray.header.frame_id is empty.
     tracking_frame: base_link
     target_frame: map

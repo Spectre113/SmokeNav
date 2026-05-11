@@ -62,7 +62,7 @@ class HumanLocalizationNode(Node):
 
         pose = PoseStamped()
         pose.header = msg.header
-        pose.header.frame_id = self.tracking_frame
+        pose.header.frame_id = msg.header.frame_id or self.tracking_frame
         pose.pose.position.x = best.px
         pose.pose.position.y = best.py
         pose.pose.position.z = 0.0
