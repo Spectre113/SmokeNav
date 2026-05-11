@@ -39,10 +39,12 @@ class ScanSmokeFilter(Node):
         density = _clamp(density, 0.0, 1.0)
         self._density_pub.publish(Float32(data=density))
 
-        # Tuned for "noticeable but not catastrophic" degradation.
-        max_range_scale = 1.0 - 0.6 * density
-        noise_std = 0.02 + 0.10 * density
-        dropout_prob = 0.02 + 0.25 * density
+        # Low smoke should be visible in metrics without breaking corridor navigation.
+        # Strong degradation is intentionally non-linear and only dominates in dense smoke.
+        effect = density * density
+        max_range_scale = 1.0 - 0.45 * effect
+        noise_std = 0.01 + 0.08 * effect
+        dropout_prob = 0.01 + 0.18 * effect
 
         out = LaserScan()
         out.header = msg.header

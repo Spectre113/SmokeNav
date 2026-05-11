@@ -72,6 +72,8 @@ class FusionNode(Node):
         self.declare_parameter('heartbeat_match_distance', 0.80)
         self.declare_parameter('heartbeat_min_score', 0.20)
         self.declare_parameter('require_heartbeat', False)
+        self.declare_parameter('use_heartbeat_fallback', False)
+        self.declare_parameter('heartbeat_fallback_confidence', 0.70)
 
         self.declare_parameter('radar_weight', 0.54)
         self.declare_parameter('thermal_weight', 0.30)
@@ -117,6 +119,12 @@ class FusionNode(Node):
         )
         self.heartbeat_min_score = float(self.get_parameter('heartbeat_min_score').value)
         self.require_heartbeat = bool(self.get_parameter('require_heartbeat').value)
+        self.use_heartbeat_fallback = bool(
+            self.get_parameter('use_heartbeat_fallback').value
+        )
+        self.heartbeat_fallback_confidence = float(
+            self.get_parameter('heartbeat_fallback_confidence').value
+        )
 
         self.radar_weight = float(self.get_parameter('radar_weight').value)
         self.thermal_weight = float(self.get_parameter('thermal_weight').value)
@@ -237,6 +245,9 @@ class FusionNode(Node):
                     )
                 )
 
+        if heartbeat_fresh and self.use_heartbeat_fallback:
+            candidates.extend(self.heartbeat_fallback_candidates())
+
         candidates = [
             c for c in candidates
             if c is not None and c.confidence >= self.min_publish_confidence
@@ -322,6 +333,28 @@ class FusionNode(Node):
             heartbeat_score=heartbeat_score,
             confidence=self.clamp(confidence, 0.0, 1.0),
         )
+
+    def heartbeat_fallback_candidates(self) -> List[Candidate]:
+        candidates = []
+        for x, y, z, strength, _phase in self.latest_heartbeat:
+            confidence = self.clamp(
+                self.heartbeat_fallback_confidence * max(strength, self.heartbeat_min_score),
+                0.0,
+                1.0,
+            )
+            candidates.append(
+                Candidate(
+                    x=x,
+                    y=y,
+                    z=z,
+                    radar_score=0.0,
+                    thermal_score=0.0,
+                    depth_score=0.0,
+                    heartbeat_score=strength,
+                    confidence=confidence,
+                )
+            )
+        return candidates
 
     def radar_shape_score(self, count: float, spread: float) -> float:
         count = max(1.0, float(count))
